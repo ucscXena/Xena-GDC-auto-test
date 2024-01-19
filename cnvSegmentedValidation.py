@@ -6,14 +6,20 @@ import subprocess
 import tarfile
 import pandas
 
-projectName = "CGCI-HTMCP-LC"
-xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.segment_cnv_ascat-ngs.tsv"
+if ( len(sys.argv) != 3 ):
+    print("Usage:\npython3 cnvSegmentedValidation.py [Project Name] [Xena File Path]")
+    exit(1)
+projectName = sys.argv[1]
+# projectName = "CPTAC-3"
+xenaFilePath = sys.argv[2]
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CPTAC-3/Xena_Matrices/CPTAC-3.segment_cnv_ascat-ngs.tsv"
 
 
 dataCategory = "copy number variation"
 gdcDataType = "Copy Number Segment"
 experimentalStrategy = "WGS"
 workflowType = "AscatNGS"
+
 
 def downloadFiles(fileList):
     jsonPayload = {
@@ -236,6 +242,7 @@ def compare():
         # If data counts don't match then there is missing data so print error
         if dataCount != len(sampleDataDF):
             print(f"Error\nXena matrix does not have all data for sample '{sample}'")
+            failedSamples.append(sample)
             continue
 
         # Loop through each sample
@@ -280,10 +287,10 @@ allSamples = getAllSamples(projectName)
 sampleDict = dataTypeSamples(allSamples)
 xenaDF = xenaDataframe(xenaFilePath)
 
-print(len(sampleDict), len(xenaSamples))
-
-print(f"Retrieved Samples:\n{sorted(sampleDict)}")
-print(f"Xena Samples:\n{sorted(xenaSamples)}")
+# print(len(sampleDict), len(xenaSamples))
+#
+# print(f"Retrieved Samples:\n{sorted(sampleDict)}")
+# print(f"Xena Samples:\n{sorted(xenaSamples)}")
 if sorted(sampleDict) != sorted(xenaSamples):
     print("ERROR:\nSamples retrieved from GDC do not match those found in xena samples")
     exit(1)

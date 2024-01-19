@@ -4,9 +4,18 @@ import tarfile
 import subprocess
 import pandas
 import numpy
+import sys
 import os
 
-projectName = "CGCI-HTMCP-LC"
+
+if ( len(sys.argv) != 3 ):
+    print("Usage:\npython3 mirnaValidation.py [Project Name] [Xena File Path]")
+    exit(1)
+
+projectName = sys.argv[1]
+# projectName = "CGCI-HTMCP-LC"
+xenaFilePath = sys.argv[2]
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.mirna.tsv"
 
 workflowType = "BCGSC miRNA Profiling"
 dataCategory = "Transcriptome Profiling"
@@ -221,9 +230,8 @@ def compare():
     return samplesCorrect == len(mirnaSamplesDict)
 
 
-xenaSamples = getXenaSamples("/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.mirna.tsv")
+xenaSamples = getXenaSamples(xenaFilePath)
 
-xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.mirna.tsv"
 allSamples = getAllSamples()
 mirnaSamplesDict = miRNASamples(allSamples)
 xenaDF = xenaDataframe(xenaFilePath)
@@ -231,13 +239,18 @@ xenaDF = xenaDataframe(xenaFilePath)
 
 if sorted(mirnaSamplesDict) != sorted(xenaSamples):
     print("ERROR:\nSamples retrieved from GDC do not match those found in xena samples")
+    print(f"Length of allSamples: {len(allSamples)}")
+    print(f"allSamples:\n{allSamples}\n")
+    print(f"Length of xena samples: {len(xenaSamples)}")
+    print(f"Xena Samples:\n{xenaSamples}\n")
+    print(f"Length of mirna samples: {len(mirnaSamplesDict)}")
+    print(f"miRNA Samples:\n{[x for x in mirnaSamplesDict]}\n")
+
+    print(f"Samples in xena samples and not in mirnaSamplesDict:\n{[x for x in xenaSamples if x not in mirnaSamplesDict]}")
+    print(f"Samples in mirnaSamplesDict and not in xenaSamples:\n{[x for x in mirnaSamplesDict if x not in xenaSamples]}")
+
     exit(1)
-# print(f"Length of allSamples: {len(allSamples)}")
-# print(f"allSamples:\n{allSamples}\n")
-# print(f"Length of xena samples: {len(xenaSamples)}")
-# print(f"Xena Samples:\n{xenaSamples}\n")
-# print(f"Length of mirna samples: {len(mirnaSamplesDict)}")
-# print(f"miRNA Samples:\n{mirnaSamplesDict}\n")
+
 fileIDS = [mirnaSamplesDict[x]["file_id"] for x in mirnaSamplesDict]
 downloadFiles(fileIDS)
 

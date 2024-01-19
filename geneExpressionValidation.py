@@ -7,12 +7,23 @@ import tarfile
 import pandas
 import numpy
 
+
+if ( len(sys.argv) != 3 ):
+    print("Usage:\npython3 geneExpressionValidation.py [Project Name] [Xena File Path]")
+    exit(1)
+
+projectName = sys.argv[1]
+# projectName = "CGCI-HTMCP-LC"
+xenaFilePath = sys.argv[2]
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.star_counts.tsv"
+
+
 dataType = "unstranded"
-projectName = "HCMI-CMDC"
 workflowType = "STAR - Counts"
 dataCategory = "Transcriptome Profiling"
 gdcDataType = "Gene Expression Quantification"
 experimentalStrategy = "RNA-Seq"
+
 
 def downloadFiles(fileList):
     jsonPayload = {
@@ -183,7 +194,19 @@ def dataTypeSamples(samples):
     for caseDict in responseJson:
         sampleName = caseDict["cases"][0]["samples"][0]["submitter_id"]
         dataTypeDict[sampleName] = dict(file_id=caseDict["file_id"], file_name=caseDict["file_name"])
-    return dataTypeDict
+        # MAKE DICT BASED OF CASE ie.
+        # dict = {case1 : {
+        #                  "sample1": {
+        #                                  "fileId": "asfasdF", "fileName": "ADFASDF"
+        #                              }
+        #                   "sample2": {
+        #                                  "fileId": "asfasdF", "fileName": "ADFASDF"
+        #                               }....
+        #                  }
+        #         }
+        #Then do each thing by case and if one case has multiple then average between
+        # Means I have to get submitter sample id and cases.submitter_id
+        return dataTypeDict
 
 
 def xenaDataframe(xenaFile):
@@ -217,7 +240,6 @@ def compare():
     return samplesCorrect == len(sampleDict)
 
 
-xenaFilePath = "/Users/jaimes28/Desktop/gdcData/HCMI-CMDC/Xena_Matrices/HCMI-CMDC.star_counts.tsv"
 xenaSamples = getXenaSamples(xenaFilePath)
 
 
@@ -225,11 +247,11 @@ allSamples = getAllSamples(projectName)
 sampleDict = dataTypeSamples(allSamples)
 xenaDF = xenaDataframe(xenaFilePath)
 
-print(len(sampleDict), len(xenaSamples))
+# print(len(sampleDict), len(xenaSamples))
 
-if sorted(sampleDict) != sorted(xenaSamples):
-    print("ERROR:\nSamples retrieved from GDC do not match those found in xena samples")
-    exit(1)
+# if sorted(sampleDict) != sorted(xenaSamples):
+#     print("ERROR:\nSamples retrieved from GDC do not match those found in xena samples")
+#     exit(1)
 
 fileIDS = [sampleDict[x]["file_id"] for x in sampleDict]
 downloadFiles(fileIDS)

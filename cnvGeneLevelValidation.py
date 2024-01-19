@@ -7,13 +7,20 @@ import tarfile
 import pandas
 import numpy
 
-dataType = "copy_number"
-projectName = "CGCI-HTMCP-LC"
+if ( len(sys.argv) != 3 ):
+    print("Usage:\npython3 cnvGeneLevelValidation.py [Project Name] [Xena File Path]")
+    exit(1)
+projectName = sys.argv[1]
+# projectName = "CGCI-HTMCP-LC"
+xenaFilePath = sys.argv[2]
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.gene-level_ascat-ngs.tsv"
 
+dataType = "copy_number"
 dataCategory = "copy number variation"
 gdcDataType = "Gene Level Copy Number"
 experimentalStrategy = "WGS"
 workflowType = "AscatNGS"
+
 
 def downloadFiles(fileList):
     jsonPayload = {
@@ -227,7 +234,6 @@ def compare():
     return samplesCorrect == len(sampleDict)
 
 
-xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.gene-level_ascat-ngs.tsv"
 xenaSamples = getXenaSamples(xenaFilePath)
 
 
@@ -235,10 +241,11 @@ allSamples = getAllSamples(projectName)
 sampleDict = dataTypeSamples(allSamples)
 xenaDF = xenaDataframe(xenaFilePath)
 
-print(len(sampleDict), len(xenaSamples))
+# print(len(sampleDict), len(xenaSamples))
+#
+# print(f"Retrieved Samples:\n{sorted(sampleDict)}")
+# print(f"Xena Samples:\n{sorted(xenaSamples)}")
 
-print(f"Retrieved Samples:\n{sorted(sampleDict)}")
-print(f"Xena Samples:\n{sorted(xenaSamples)}")
 if sorted(sampleDict) != sorted(xenaSamples):
     print("ERROR:\nSamples retrieved from GDC do not match those found in xena samples")
     exit(1)
@@ -250,3 +257,4 @@ if compare():
     print("Passed")
 else:
     print("Fail")
+
