@@ -1,5 +1,8 @@
 import os
 import sys
+
+import pandas as pd
+import difflib
 import requests
 import json
 import subprocess
@@ -10,10 +13,9 @@ if ( len(sys.argv) != 3 ):
     print("Usage:\npython3 cnvSegmentedValidation.py [Project Name] [Xena File Path]")
     exit(1)
 projectName = sys.argv[1]
-# projectName = "CPTAC-3"
+# projectName = "HCMI-CMDC"
 xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CPTAC-3/Xena_Matrices/CPTAC-3.segment_cnv_ascat-ngs.tsv"
-
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/HCMI-CMDC/Xena_Matrices/HCMI-CMDC.segment_cnv_ascat-ngs.tsv"
 
 dataCategory = "copy number variation"
 gdcDataType = "Copy Number Segment"
@@ -107,6 +109,7 @@ def getAllSamples(projectName):
     responseJson = unpeelJson(response.json())
 
     allSamples = []
+
     for caseDict in responseJson:
         for sample in caseDict["submitter_sample_ids"]:
             allSamples.append(sample)
@@ -194,13 +197,19 @@ def dataTypeSamples(samples):
     response = requests.post(filesEndpt, json=params, headers={"Content-Type": "application/json"})
     responseJson = unpeelJson(response.json())
     dataTypeDict = {}
+    # create seen dict to see how many times a sample has been seen
+    seenDict = {}
+    seenSamples = []
     for caseDict in responseJson:
         for sample in caseDict["cases"][0]["samples"]:
+            sampleName = sample["submitter_id"]
             if sample["tissue_type"] == "Tumor":
-                dataTypeDict[sample["submitter_id"]] = dict(file_id=caseDict["file_id"],
+                seenDict[sampleName] = seenDict.get(sampleName, 0) + 1
+                seenSamples.append(sampleName)
+                dataTypeDict[sampleName + "." + str(seenDict[sampleName])] = dict(file_id=caseDict["file_id"],
                                                             file_name=caseDict["file_name"])
 
-    return dataTypeDict
+    return dataTypeDict, list(set(seenSamples))
 
 
 def xenaDataframe(xenaFile):
@@ -209,96 +218,66 @@ def xenaDataframe(xenaFile):
     return xenaDF
 
 
-def compare():
-    # Get a list of xena data frame column to see where sample name first occurs
-    xenaDfSampleColumn = xenaDF["sample"].tolist()
-    # get reversed list to find last occurence of sample in the column
-    reversedXenaDfSampleColumn = list(reversed(xenaDfSampleColumn))
-
-    # Create empty list to collect all the samples that had errors
-    failedSamples = []
-
-    # Go through each sample
+def sampleDataframe():
+    dataFrame = pandas.DataFrame()
+    # Create a dataframe for all the samples retrieved
     for sample in sampleDict:
-        # Make success equal to true and make it false if there is an error
-        success = True
-        # print(f"Sample: {sample}\n\n")
-
-        # Get file id and name so sampleFile name can be constructed
         fileId = sampleDict[sample]["file_id"]
         fileName = sampleDict[sample]["file_name"]
         sampleFile = "gdcFiles/" + fileId + "/" + fileName
-
+        normalSampleName = sample[:sample.index(".")]
         # Create data frame for sample data
         sampleDataDF = pandas.read_csv(sampleFile, sep="\t")
-
-        # Get index of first sample
-        firstSampleIndex = xenaDfSampleColumn.index(sample)
-        # Find index of last sample and convert it to correct number
-        lastSampleIndex = len(xenaDF) - reversedXenaDfSampleColumn.index(sample) - 1
-
-        # Calculate how many rows are in the sample dataframe
-        dataCount = lastSampleIndex - firstSampleIndex + 1
-        # If data counts don't match then there is missing data so print error
-        if dataCount != len(sampleDataDF):
-            print(f"Error\nXena matrix does not have all data for sample '{sample}'")
-            failedSamples.append(sample)
-            continue
-
-        # Loop through each sample
-        for sampleIndex in range(firstSampleIndex, lastSampleIndex + 1):
-            # Get each row from each dataframe
-            xenaRow = xenaDF.iloc[sampleIndex]
-            sampleRow = sampleDataDF.iloc[sampleIndex - firstSampleIndex]   # Get proper row in sample dataframe since index is different
-            # If any data doesn't match then modify success to show that there was issue and log errors
-            if ((sampleRow["Chromosome"] != xenaRow["Chrom"]) or (sampleRow["Start"] != xenaRow["Start"]) or
-                    (sampleRow["End"] != xenaRow["End"]) or (sampleRow["Copy_Number"] != xenaRow["value"])):
-                success = False
-                # Log the errors
-                print(f"Error for sample {sample}\n")
-                print("Xena Data:\n"
-                      f'Chrom: {xenaRow["Chrom"]}\n'
-                      f'Start: {xenaRow["Start"]}\n'
-                      f'End: {xenaRow["End"]}\n'
-                      f'Value: {xenaRow["value"]}\n'
-                      )
-
-                print("Sample Data:\n"
-                      f'Chrom: {sampleRow["Chromosome"]}\n'
-                      f'Start: {sampleRow["Start"]}\n'
-                      f'End: {sampleRow["End"]}\n'
-                      f'Value: {sampleRow["Copy_Number"]}\n'
-                      )
-        # If there was an error then add it to list of failed samples
-        if not success:
-            failedSamples.append(sample)
-    # If there are no failed samples then return True
-    if len(failedSamples) == 0:
-        return True
-    # Otherwise print all the failed samples and return False
-    else:
-        print(f"Failed Samples:\n {failedSamples}")
-        return False
+        sampleDataDF.rename(columns={'Chromosome': 'Chrom'}, inplace=True)
+        sampleDataDF.rename(columns={'GDC_Aliquot': 'sample'}, inplace=True)
+        sampleDataDF.rename(columns={'Copy_Number': 'value'}, inplace=True)
+        sampleDataDF.drop(columns=['Major_Copy_Number', 'Minor_Copy_Number'], inplace=True)
+        sampleDataDF.replace(sampleDataDF.iloc[0].iat[0], normalSampleName, inplace=True)
+        dataFrame = pandas.concat([dataFrame, sampleDataDF])
+    return dataFrame
 
 
 xenaSamples = getXenaSamples(xenaFilePath)
 
 allSamples = getAllSamples(projectName)
-sampleDict = dataTypeSamples(allSamples)
+sampleDict, seenSamples = dataTypeSamples(allSamples)
 xenaDF = xenaDataframe(xenaFilePath)
 
 # print(len(sampleDict), len(xenaSamples))
 #
 # print(f"Retrieved Samples:\n{sorted(sampleDict)}")
 # print(f"Xena Samples:\n{sorted(xenaSamples)}")
-if sorted(sampleDict) != sorted(xenaSamples):
+if sorted(seenSamples) != sorted(xenaSamples):
     print("ERROR:\nSamples retrieved from GDC do not match those found in xena samples")
     exit(1)
 
 fileIDS = [sampleDict[x]["file_id"] for x in sampleDict]
 downloadFiles(fileIDS)
+# sort data frame
+xenaDF.sort_values(by=sorted(xenaDF), inplace=True)
 
-if compare():
+# create dataframe for samples
+sampleDf = sampleDataframe()
+# sort sample dataframe as well
+sampleDf.sort_values(by=sorted(sampleDf), inplace=True)
+# then reset index ordering for each one
+xenaDF.reset_index(inplace=True, drop=True)
+sampleDf.reset_index(inplace=True, drop=True)
+
+with open("sampleDF.csv", "w") as sampleFile:
+    sampleDf.to_csv(sampleFile)
+
+with open("xenaDF.csv", "w") as xenaDfFile:
+    xenaDF.to_csv(xenaDfFile)
+
+
+if sampleDf.equals(xenaDF):
     print("Passed")
 else:
-    print("Fail")
+    with open("sampleDF.csv", "r") as sampleFile:
+        with open("xenaDF.csv", "r") as xenaDfFile:
+            # if they are not equal then output diff of both files
+            sys.stdout.writelines(difflib.unified_diff(sampleFile.readlines(), xenaDfFile.readlines(),
+                                                       fromfile="sampleDF.csv", tofile="xenaDF.csv"))
+
+
