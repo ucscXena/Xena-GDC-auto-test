@@ -7,7 +7,6 @@ import tarfile
 import pandas
 import numpy
 
-
 if ( len(sys.argv) != 3 ):
     print("Usage:\npython3 geneExpressionValidation.py [Project Name] [Xena File Path]")
     exit(1)
@@ -16,7 +15,6 @@ projectName = sys.argv[1]
 # projectName = "CGCI-HTMCP-LC"
 xenaFilePath = sys.argv[2]
 # xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.star_counts.tsv"
-
 
 dataType = "unstranded"
 workflowType = "STAR - Counts"
@@ -33,8 +31,9 @@ def downloadFiles(fileList):
         payloadFile.write(str(jsonPayload).replace("\'", "\""))
 
     print("Downloading from GDC: ")
-    subprocess.run(["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
-                     "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
+    subprocess.run(
+        ["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
+         "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
 
     gdcTarfile = tarfile.open("gdcFiles.tar.gz")
     gdcTarfile.extractall("gdcFiles")
@@ -204,9 +203,9 @@ def dataTypeSamples(samples):
         #                               }....
         #                  }
         #         }
-        #Then do each thing by case and if one case has multiple then average between
+        # Then do each thing by case and if one case has multiple then average between
         # Means I have to get submitter sample id and cases.submitter_id
-        return dataTypeDict
+    return dataTypeDict
 
 
 def xenaDataframe(xenaFile):
@@ -236,12 +235,11 @@ def compare():
                 print(f"wrong comparison, Sample {sample}, index {row}")
         if cellsCorrect == len(sampleDataDF.index):
             samplesCorrect += 1
-        sampleNum+=1
+        sampleNum += 1
     return samplesCorrect == len(sampleDict)
 
 
 xenaSamples = getXenaSamples(xenaFilePath)
-
 
 allSamples = getAllSamples(projectName)
 sampleDict = dataTypeSamples(allSamples)
@@ -249,9 +247,12 @@ xenaDF = xenaDataframe(xenaFilePath)
 
 # print(len(sampleDict), len(xenaSamples))
 
-# if sorted(sampleDict) != sorted(xenaSamples):
-#     print("ERROR:\nSamples retrieved from GDC do not match those found in xena samples")
-#     exit(1)
+if sorted(sampleDict) != sorted(xenaSamples):
+    print("Samples retrieved from GDC and not in Xena Dataframe")
+    print([x for x in sampleDict if x not in xenaSamples])
+    print("Samples retrieved from Xena Dataframe and not in GDC retrieved samples")
+    print([x for x in xenaSamples if x not in sampleDict])
+    exit(1)
 
 fileIDS = [sampleDict[x]["file_id"] for x in sampleDict]
 downloadFiles(fileIDS)
