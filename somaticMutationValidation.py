@@ -6,6 +6,8 @@ import subprocess
 import tarfile
 import pandas
 import numpy
+import difflib
+from math import floor, log10
 
 if ( len(sys.argv) != 3 ):
     print("Usage:\npython3 somaticMutationValidation.py [Project Name] [Xena File Path]")
@@ -13,7 +15,7 @@ if ( len(sys.argv) != 3 ):
 
 projectName = sys.argv[1]
 # projectName = "HCMI-CMDC"
-# xenaFilePath = "/Users/jaimes28/Downloads/HCMI-CMDC.somaticmutation_snv (1).tsv"
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/HCMI-CMDC/Xena_Matrices/HCMI-CMDC.somaticmutation_snv.tsv"
 xenaFilePath = sys.argv[2]
 
 dataCategory = "simple nucleotide variation"
@@ -21,6 +23,40 @@ gdcDataType = "Masked Somatic Mutation"
 experimentalStrategy = "WXS"
 workflowType = "Aliquot Ensemble Somatic Variant Merging and Masking"
 
+
+# From https://github.com/corriander/python-sigfig/blob/dev/sigfig/sigfig.py
+def round_(x, n):
+    """Round a float, x, to n significant figures.
+
+	Caution should be applied when performing this operation.
+	Significant figures are an implication of precision; arbitrarily
+	truncating floats mid-calculation is probably not Good Practice in
+	almost all cases.
+
+	Rounding off a float to n s.f. results in a float. Floats are, in
+	general, approximations of decimal numbers. The point here is that
+	it is very possible to end up with an inexact number:
+
+		roundsf(0.0012395, 3)
+		0.00124
+	    roundsf(0.0012315, 3)
+		0.0012300000000000002
+
+	Basically, rounding in this way probably doesn't do what you want
+	it to.
+    """
+    n = int(n)
+    x = float(x)
+
+    if x == 0: return 0
+
+    e = floor(log10(abs(x)) - n + 1)  # exponent, 10 ** e
+    shifted_dp = x / (10 ** e)  # decimal place shifted n d.p.
+    return round(shifted_dp) * (10 ** e)  # round and revert
+
+
+def vaf(t_alt_count, t_depth):
+    return round_(t_alt_count / t_depth, 3)
 
 
 def downloadFiles(fileList):
@@ -193,15 +229,6 @@ def dataTypeSamples(samples):
                         "tumor"
                     ]
                 }
-            },
-            {
-                "op": "in",
-                "content": {
-                    "field": "access",
-                    "value": [
-                        "open"
-                    ]
-                }
             }
         ]
     }
@@ -214,144 +241,123 @@ def dataTypeSamples(samples):
     response = requests.post(filesEndpt, json=params, headers={"Content-Type": "application/json"})
     responseJson = unpeelJson(response.json())
     dataTypeDict = {}
+    # create seen dict to see how many times a sample has been seen
+    seenDict = {}
+    seenSamples = []
     for caseDict in responseJson:
         for sample in caseDict["cases"][0]["samples"]:
+            sampleName = sample["submitter_id"]
             if sample["tissue_type"] == "Tumor":
-                dataTypeDict[sample["submitter_id"]] = dict(file_id=caseDict["file_id"],
-                                                            file_name=caseDict["file_name"])
+                seenDict[sampleName] = seenDict.get(sampleName, 0) + 1
+                seenSamples.append(sampleName)
+                dataTypeDict[sampleName + "." + str(seenDict[sampleName])] = dict(file_id=caseDict["file_id"],
+                                                                                  file_name=caseDict["file_name"])
 
-    return dataTypeDict
+    return dataTypeDict, list(set(seenSamples))
 
 
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t")
-    xenaDF = xenaDF.round(10)
+    xenaDF["dna_vaf"] = xenaDF["dna_vaf"].apply(round_, n=3)
     return xenaDF
 
 
-def compare():
-    # Get a list of xena data frame column to see where sample name first occurs
-    xenaDfSampleColumn = xenaDF["sample"].tolist()
-    # get reversed list to find last occurence of sample in the column
-    reversedXenaDfSampleColumn = list(reversed(xenaDfSampleColumn))
-
-    # Create empty list to collect all the samples that had errors
-    failedSamples = []
-
-    # Go through each sample
-    for sample in xenaSamples:
-        # Make success equal to true and make it false if there is an error
-        success = True
-        # print(f"Sample: {sample}\n\n")
-
-        # Get file id and name so sampleFile name can be constructed
-        try:
-            fileId = sampleDict[sample]["file_id"]
-        except KeyError:
-            print(sample)
-            continue
+def nonEmptySamples():
+    nonEmpty = []
+    allSampleNames = []
+    for sample in sampleDict:
+        fileId = sampleDict[sample]["file_id"]
         fileName = sampleDict[sample]["file_name"]
         sampleFile = "gdcFiles/" + fileId + "/" + fileName
+        normalSampleName = sample[:sample.index(".")]
+        sampleDataDF = pandas.read_csv(sampleFile, sep="\t", skiprows=7)
+        if (len(sampleDataDF.index) == 0):
+            continue
+        if (normalSampleName not in nonEmpty):
+            nonEmpty.append(normalSampleName)
+            allSampleNames.append(sample)
 
+    return nonEmpty, allSampleNames
+
+
+def sampleDataframe():
+    dataFrame = pandas.DataFrame()
+    # Create a dataframe for all the samples retrieved
+    for sample in sampleNames:
+        fileId = sampleDict[sample]["file_id"]
+        fileName = sampleDict[sample]["file_name"]
+        sampleFile = "gdcFiles/" + fileId + "/" + fileName
+        normalSampleName = sample[:sample.index(".")]
         # Create data frame for sample data
         sampleDataDF = pandas.read_csv(sampleFile, sep="\t", skiprows=7)
+        sampleDataDF.rename(columns={'Hugo_Symbol': 'gene'}, inplace=True)
+        sampleDataDF.rename(columns={'Chromosome': 'chrom'}, inplace=True)
+        sampleDataDF.rename(columns={'Start_Position': 'start'}, inplace=True)
+        sampleDataDF.rename(columns={'End_Position': 'end'}, inplace=True)
+        sampleDataDF.rename(columns={'Reference_Allele': 'ref'}, inplace=True)
+        sampleDataDF.rename(columns={'Tumor_Seq_Allele2': 'alt'}, inplace=True)
+        sampleDataDF.rename(columns={'HGVSp_Short': 'Amino_Acid_Change'}, inplace=True)
+        sampleDataDF.rename(columns={'Consequence': 'effect'}, inplace=True)
 
-        # Get index of first sample
-        firstSampleIndex = xenaDfSampleColumn.index(sample)
-        # Find index of last sample and convert it to correct number
-        lastSampleIndex = len(xenaDF) - reversedXenaDfSampleColumn.index(sample) - 1
+        sampleDataDF["dna_vaf"] = sampleDataDF.apply(lambda x: vaf(x.t_alt_count, x.t_depth), axis=1)
 
-        # Calculate how many rows are in the sample dataframe
-        dataCount = lastSampleIndex - firstSampleIndex + 1
-        # If data counts don't match then there is missing data so print error
-        if dataCount != len(sampleDataDF):
-            print(f"Error\nXena matrix does not have all data for sample '{sample}'")
-            continue
+        sampleDataDF = sampleDataDF.loc[:,
+                       ["gene", "chrom", "start", "end", "ref", "alt", "Tumor_Sample_Barcode", "Amino_Acid_Change",
+                        "effect",
+                        "callers", "dna_vaf"]]
+        sampleDataDF = sampleDataDF[
+            ["gene", "chrom", "start", "end", "ref", "alt", "Tumor_Sample_Barcode", "Amino_Acid_Change", "effect",
+             "callers", "dna_vaf"]]
+        sampleDataDF.insert(0, "sample", normalSampleName)
+        sampleDataDF["dna_vaf"] = sampleDataDF["dna_vaf"].apply(round_, n=3)
 
-        # Loop through each sample
-        for sampleIndex in range(firstSampleIndex, lastSampleIndex + 1):
-            # Get each row from each dataframe
-            xenaRow = xenaDF.iloc[sampleIndex]
-            sampleRow = sampleDataDF.iloc[sampleIndex - firstSampleIndex]   # Get proper row in sample dataframe since index is different
-            dna_vaf = numpy.round(sampleRow["t_alt_count"] / sampleRow["t_depth"], 10)
-            # If any data doesn't match then modify success to show that there was issue and log errors
-            if ((sampleRow["Hugo_Symbol"] != xenaRow["gene"] and (not pandas.isna(sampleRow["Hugo_Symbol"]) and not pandas.isna(xenaRow["gene"]))) or
-                    (sampleRow["Chromosome"] != xenaRow["chrom"] and (not pandas.isna(sampleRow["Chromosome"]) and not pandas.isna(xenaRow["chrom"]))) or
-                    (sampleRow["Start_Position"] != xenaRow["start"] and (not pandas.isna(sampleRow["Start_Position"]) and not pandas.isna(xenaRow["start"]))) or
-                    (sampleRow["End_Position"] != xenaRow["end"] and (not pandas.isna(sampleRow["End_Position"]) and not pandas.isna(xenaRow["end"]))) or
-                    (sampleRow["Reference_Allele"] != xenaRow["ref"] and (not pandas.isna(sampleRow["Reference_Allele"]) and not pandas.isna(xenaRow["ref"]))) or
-                    (sampleRow["Tumor_Seq_Allele2"] != xenaRow["alt"] and (not pandas.isna(sampleRow["Tumor_Seq_Allele2"]) and not pandas.isna(xenaRow["alt"]))) or
-                    (sampleRow["Tumor_Sample_Barcode"] != xenaRow["Tumor_Sample_Barcode"] and (not pandas.isna(sampleRow["Tumor_Sample_Barcode"]) and not pandas.isna(xenaRow["Tumor_Sample_Barcode"]))) or
-                    (sampleRow["HGVSp_Short"] != xenaRow["Amino_Acid_Change"] and (not pandas.isna(sampleRow["HGVSp_Short"]) and not pandas.isna(xenaRow["Amino_Acid_Change"]))) or
-                    (sampleRow["Consequence"] != xenaRow["effect"] and (not pandas.isna(sampleRow["Consequence"]) and not pandas.isna(xenaRow["effect"]))) or
-                    (sampleRow["callers"] != xenaRow["callers"] and (not pandas.isna(sampleRow["callers"]) and not pandas.isna(xenaRow["callers"]))) or
-                    (dna_vaf != xenaRow["dna_vaf"])):
-                success = False
-                # Log the errors
-                print(f"Error for sample {sample}\n")
-                print("Xena Data:\n"
-                      f'Gene: {xenaRow["gene"]}\n'
-                      f'Chrom: {xenaRow["chrom"]}\n'
-                      f'Start: {xenaRow["start"]}\n'
-                      f'End: {xenaRow["end"]}\n'
-                      f'Ref: {xenaRow["ref"]}\n'
-                      f'Alt: {xenaRow["alt"]}\n'
-                      f'Tumor Sample Barcode: {xenaRow["Tumor_Sample_Barcode"]}\n'
-                      f'Amino Acid Change: {xenaRow["Amino_Acid_Change"]}\n'
-                      f'Effect: {xenaRow["effect"]}\n'
-                      f'Callers: {xenaRow["callers"]}\n'
-                      f'Dna Vaf: {xenaRow["dna_vaf"]}\n'
-                      )
-
-                print("Sample Data:\n"
-                      f'Gene: {sampleRow["Hugo_Symbol"]}\n'
-                      f'Chrom: {sampleRow["Chromosome"]}\n'
-                      f'Start: {sampleRow["Start_Position"]}\n'
-                      f'End: {sampleRow["End_Position"]}\n'
-                      f'Ref: {sampleRow["Reference_Allele"]}\n'
-                      f'Alt: {sampleRow["Tumor_Seq_Allele2"]}\n'
-                      f'Tumor Sample Barcode: {sampleRow["Tumor_Sample_Barcode"]}\n'
-                      f'Amino Acid Change: {sampleRow["HGVSp_Short"]}\n'
-                      f'Effect: {sampleRow["Consequence"]}\n'
-                      f'Callers: {sampleRow["callers"]}\n'
-                      f'Dna Vaf: {dna_vaf}\n'
-                      )
-        # If there was an error then add it to list of failed samples
-        if not success:
-            failedSamples.append(sample)
-    # If there are no failed samples then return True
-    if len(failedSamples) == 0:
-        return True
-    # Otherwise print all the failed samples and return False
-    else:
-        print(f"Failed Samples:\n {failedSamples}")
-        return False
-
+        dataFrame = pandas.concat([dataFrame, sampleDataDF])
+    return dataFrame
 
 
 xenaSamples = getXenaSamples(xenaFilePath)
 
 allSamples = getAllSamples(projectName)
-sampleDict = dataTypeSamples(allSamples)
+sampleDict, seenSamples = dataTypeSamples(allSamples)
 xenaDF = xenaDataframe(xenaFilePath)
-
-modifiedSamples = [sample for sample in sampleDict if sample in xenaSamples]
-# print(len(modifiedSamples), len(xenaSamples))
-
-
-# print(f"Retrieved Samples:\n{sorted(sampleDict)}")
-# print(f"Xena Samples:\n{sorted(xenaSamples)}")
-
-# UNCOMMENT AFTER
-# if sorted(sampleDict) != sorted(xenaSamples):
-#     print("ERROR:\nSamples retrieved from GDC do not match those found in xena samples\nMissing:")
-#     print([sample for sample in sampleDict if (sample not in xenaSamples)])
-#    exit(1)
 
 fileIDS = [sampleDict[x]["file_id"] for x in sampleDict]
 downloadFiles(fileIDS)
 
-if compare():
+validSamples, sampleNames = nonEmptySamples()
+validSamples = list(set(validSamples))
+
+if sorted(validSamples) != sorted(xenaSamples):
+    print("Samples retrieved from GDC and not in Xena Dataframe")
+    print([x for x in seenSamples if x not in xenaSamples])
+    print("Samples retrieved from Xena Dataframe and not in GDC retrieved samples")
+    print([x for x in xenaSamples if x not in seenSamples])
+    exit(1)
+
+# create dataframe for samples
+sampleDf = sampleDataframe()
+xenaDF.sort_values(by=sorted(xenaDF), inplace=True)
+# sort sample dataframe as well
+sampleDf.sort_values(by=sorted(xenaDF), inplace=True)
+
+# then reset index ordering for each one
+xenaDF.reset_index(inplace=True, drop=True)
+sampleDf.reset_index(inplace=True, drop=True)
+
+with open("sampleDF.csv", "w") as sampleFile:
+    sampleDf.to_csv(sampleFile)
+
+with open("xenaDF.csv", "w") as xenaDfFile:
+    xenaDF.to_csv(xenaDfFile)
+
+
+try:
+    pandas.testing.assert_frame_equal(sampleDf, xenaDF, check_dtype=False)
     print("Passed")
-else:
-    print("Fail")
+except AssertionError:
+    with open("sampleDF.csv", "r") as sampleFile:
+        with open("xenaDF.csv", "r") as xenaDfFile:
+            # if they are not equal then output diff of both files
+            with open("diff.txt", "w") as diffFile:
+                diffFile.writelines(difflib.unified_diff(sampleFile.readlines(), xenaDfFile.readlines(),
+                                                         fromfile="sampleDF.csv", tofile="xenaDF.csv"))
