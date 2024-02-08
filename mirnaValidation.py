@@ -13,9 +13,9 @@ if ( len(sys.argv) != 3 ):
     exit(1)
 
 projectName = sys.argv[1]
-# projectName = "CGCI-HTMCP-LC"
+# projectName = "CPTAC-3"
 xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.mirna.tsv"
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CPTAC-3/Xena_Matrices/CPTAC-3.mirna.tsv"
 
 workflowType = "BCGSC miRNA Profiling"
 dataCategory = "Transcriptome Profiling"
@@ -197,14 +197,15 @@ def miRNASamples(samples):
     responseJson = unpeelJson(response.json())
     mirnaSamplesDict = {}
     for caseDict in responseJson:
-        sampleName = caseDict["cases"][0]["samples"][0]["submitter_id"]
-        mirnaSamplesDict[sampleName] = dict(file_id=caseDict["file_id"], file_name=caseDict["file_name"])
+        for submitterDict in caseDict["cases"][0]["samples"]:
+            sampleName = submitterDict["submitter_id"]
+            mirnaSamplesDict[sampleName] = dict(file_id=caseDict["file_id"], file_name=caseDict["file_name"])
     return mirnaSamplesDict
 
 
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t", index_col=0)
-    xenaDF = xenaDF.round(10)
+    xenaDF = xenaDF.round(8)
     return xenaDF
 
 
@@ -217,7 +218,7 @@ def compare():
         fileName = mirnaSamplesDict[sample]["file_name"]
         sampleFile = "gdcFiles/" + fileId + "/" + fileName
         sampleDataDF = pandas.read_csv(sampleFile, sep="\t", index_col=0)
-        sampleDataDF[mirnaDataTitle] = (numpy.log2(sampleDataDF[mirnaDataTitle] + 1)).round(10)
+        sampleDataDF[mirnaDataTitle] = (numpy.log2(sampleDataDF[mirnaDataTitle] + 1)).round(8)
         for row in range(len(sampleDataDF.index)):
             xenaDataCell = xenaDF.iloc[row][sample]
             sampleDataCell = sampleDataDF.iloc[row][mirnaDataTitle]
@@ -240,11 +241,8 @@ xenaDF = xenaDataframe(xenaFilePath)
 if sorted(mirnaSamplesDict) != sorted(xenaSamples):
     print("ERROR:\nSamples retrieved from GDC do not match those found in xena samples")
     print(f"Length of allSamples: {len(allSamples)}")
-    print(f"allSamples:\n{allSamples}\n")
     print(f"Length of xena samples: {len(xenaSamples)}")
-    print(f"Xena Samples:\n{xenaSamples}\n")
     print(f"Length of mirna samples: {len(mirnaSamplesDict)}")
-    print(f"miRNA Samples:\n{[x for x in mirnaSamplesDict]}\n")
 
     print(f"Samples in xena samples and not in mirnaSamplesDict:\n{[x for x in xenaSamples if x not in mirnaSamplesDict]}")
     print(f"Samples in mirnaSamplesDict and not in xenaSamples:\n{[x for x in mirnaSamplesDict if x not in xenaSamples]}")
