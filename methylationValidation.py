@@ -6,26 +6,28 @@ import subprocess
 import tarfile
 import pandas
 import numpy
+from math import floor, log10
 
 
-if ( len(sys.argv) != 4 ):
-    print("Usage:\npython3 methylationValidation.py [Project Name] [Xena File Path] [methylation array generation]\n"
-          "Valid Generations: [methylation_epic, methylation_27, methylation_450]")
-    exit(1)
+# if ( len(sys.argv) != 4 ):
+#     print("Usage:\npython3 methylationValidation.py [Project Name] [Xena File Path] [methylation array generation]\n"
+#           "Valid Generations: [methylation_epic, methylation_27, methylation_450]")
+#     exit(1)
 
-projectName = sys.argv[1]
-# projectName = "TCGA-KICH"
-xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/TCGA-KICH/Xena_Matrices/TCGA-KICH.methylation450.tsv"
+# projectName = sys.argv[1]
+projectName = "CPTAC-3"
+# xenaFilePath = sys.argv[2]
+xenaFilePath = "/Users/jaimes28/Desktop/gdcData/TCGA-KICH/Xena_Matrices/TCGA-KICH.methylation450.tsv"
 # This will be different depending on user input
-platform = sys.argv[3]
-# platform = "illumina human methylation 450"
+# platform = sys.argv[3]
+platform = "methylation_epic"
 platformDict = {"methylation_epic": "illumina methylation epic",
                 "methylation_27": "illumina human methylation 27",
                 "methylation_450": "illumina human methylation 450"}
 
 if platform not in platformDict:
-    print("Invalid methylation array generation\nValid Generations: [methylation_epic, methylation_27, methylation_450]")
+    print(
+        "Invalid methylation array generation\nValid Generations: [methylation_epic, methylation_27, methylation_450]")
     exit(1)
 
 platform = platformDict[platform]
@@ -34,8 +36,6 @@ dataCategory = "dna methylation"
 gdcDataType = "Methylation Beta Value"
 experimentalStrategy = "Methylation Array"
 workflowType = "SeSAMe Methylation Beta Estimation"
-# This will be different depending on user input
-platform = "illumina human methylation 450"
 
 
 def downloadFiles(fileList):
@@ -46,12 +46,12 @@ def downloadFiles(fileList):
         payloadFile.write(str(jsonPayload).replace("\'", "\""))
 
     print("Downloading from GDC: ")
-    subprocess.run(["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
-                     "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
+    subprocess.run(
+        ["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
+         "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
 
-    gdcTarfile = tarfile.open("gdcFiles.tar.gz")
-    gdcTarfile.extractall("gdcFiles")
-    gdcTarfile.close()
+    os.system("mkdir gdcFiles")
+    os.system("tar -xzf gdcFiles.tar.gz -C gdcFiles")
 
 
 def getXenaSamples(xenaFile):  # get all samples from the xena matrix
@@ -266,7 +266,6 @@ def compare():
 xenaFilePath = "/Users/jaimes28/Desktop/gdcData/TCGA-KICH/Xena_Matrices/TCGA-KICH.methylation450.tsv"
 xenaSamples = getXenaSamples(xenaFilePath)
 
-
 allSamples = getAllSamples(projectName)
 sampleDict = dataTypeSamples(allSamples)
 xenaDF = xenaDataframe(xenaFilePath)
@@ -288,4 +287,3 @@ if compare():
     print("Passed")
 else:
     print("Fail")
-

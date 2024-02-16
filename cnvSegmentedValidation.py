@@ -31,13 +31,11 @@ def downloadFiles(fileList):
         payloadFile.write(str(jsonPayload).replace("\'", "\""))
 
     print("Downloading from GDC: ")
-    subprocess.run(
-        ["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
+    subprocess.run(["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
          "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
 
-    gdcTarfile = tarfile.open("gdcFiles.tar.gz")
-    gdcTarfile.extractall("gdcFiles")
-    gdcTarfile.close()
+    os.system("mkdir gdcFiles")
+    os.system("tar -xzf gdcFiles.tar.gz -C gdcFiles")
 
 
 def getXenaSamples(xenaFile):  # get all samples from the xena matrix
