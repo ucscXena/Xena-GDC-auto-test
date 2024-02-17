@@ -12,9 +12,9 @@ if ( len(sys.argv) != 3 ):
     exit(1)
 
 projectName = sys.argv[1]
-# projectName = "CGCI-HTMCP-LC"
+# projectName = "CPTAC-3"
 xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.star_counts.tsv"
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CPTAC-3/Xena_Matrices/CPTAC-3.star_counts.tsv"
 
 dataType = "unstranded"
 workflowType = "STAR - Counts"
@@ -182,7 +182,7 @@ def dataTypeSamples(samples):
     }
     params = {
         "filters": json.dumps(dataTypeFilter),
-        "fields": "cases.samples.submitter_id,file_id,file_name",
+        "fields": "cases.samples.submitter_id,file_id,file_name,cases.samples.tissue_type",
         "format": "json",
         "size": 20000
     }
@@ -190,20 +190,9 @@ def dataTypeSamples(samples):
     responseJson = unpeelJson(response.json())
     dataTypeDict = {}
     for caseDict in responseJson:
-        sampleName = caseDict["cases"][0]["samples"][0]["submitter_id"]
-        dataTypeDict[sampleName] = dict(file_id=caseDict["file_id"], file_name=caseDict["file_name"])
-        # MAKE DICT BASED OF CASE ie.
-        # dict = {case1 : {
-        #                  "sample1": {
-        #                                  "fileId": "asfasdF", "fileName": "ADFASDF"
-        #                              }
-        #                   "sample2": {
-        #                                  "fileId": "asfasdF", "fileName": "ADFASDF"
-        #                               }....
-        #                  }
-        #         }
-        # Then do each thing by case and if one case has multiple then average between
-        # Means I have to get submitter sample id and cases.submitter_id
+        for sample in caseDict["cases"][0]["samples"]:
+            sampleName = sample["submitter_id"]
+            dataTypeDict[sampleName] = dict(file_id=caseDict["file_id"], file_name=caseDict["file_name"])
     return dataTypeDict
 
 
