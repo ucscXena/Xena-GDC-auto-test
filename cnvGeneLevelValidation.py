@@ -11,9 +11,9 @@ if ( len(sys.argv) != 3 ):
     print("Usage:\npython3 cnvGeneLevelValidation.py [Project Name] [Xena File Path]")
     exit(1)
 projectName = sys.argv[1]
-# projectName = "CGCI-HTMCP-LC"
+# projectName = "CPTAC-3"
 xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.gene-level_ascat-ngs.tsv"
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CPTAC-3/Xena_Matrices/CPTAC-3.gene-level_ascat-ngs.tsv"
 
 dataType = "copy_number"
 dataCategory = "copy number variation"
@@ -33,9 +33,8 @@ def downloadFiles(fileList):
     subprocess.run(["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
                      "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
 
-    gdcTarfile = tarfile.open("gdcFiles.tar.gz")
-    gdcTarfile.extractall("gdcFiles")
-    gdcTarfile.close()
+    os.system("mkdir gdcFiles")
+    os.system("tar -xzf gdcFiles.tar.gz -C gdcFiles")
 
 
 def getXenaSamples(xenaFile):  # get all samples from the xena matrix
@@ -199,9 +198,13 @@ def dataTypeSamples(samples):
     dataTypeDict = {}
     for caseDict in responseJson:
         for sample in caseDict["cases"][0]["samples"]:
+            sampleName = sample["submitter_id"]
             if sample["tissue_type"] == "Tumor":
-                dataTypeDict[sample["submitter_id"]] = dict(file_id=caseDict["file_id"], file_name=caseDict["file_name"])
-
+                if sampleName in dataTypeDict:
+                    dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
+                else:
+                    dataTypeDict[sampleName] = {}
+                    dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
     return dataTypeDict
 
 
@@ -215,12 +218,31 @@ def compare():
     samplesCorrect = 0
     sampleNum = 0
     for sample in sampleDict:
+        fileCount = 0
         print(f"Sample: {sample}\nSample Number: {sampleNum}\n\n")
+        for fileID in sampleDict[sample]:
+            fileName = sampleDict[sample][fileID]
+            sampleFile = "gdcFiles/" + fileID + "/" + fileName
+            if fileCount == 0:
+                sampleDataDF = pandas.read_csv(sampleFile, sep="\t")
+                sampleDataDF["nonNanCount"] = 0
+                sampleDataDF["nonNanCount"] = sampleDataDF.apply(lambda x: 1 if (not(pandas.isna(x["copy_number"]))) else 0, axis=1)
+                sampleDataDF["copy_number"] = sampleDataDF["copy_number"].fillna(0)
+            else:
+                tempDF = pandas.read_csv(sampleFile, sep="\t")
+                tempDF["nonNanCount"] = 0
+                tempDF["nonNanCount"] = tempDF.apply(lambda x: 1 if (not(pandas.isna(x["copy_number"]))) else 0, axis=1)
+                tempDF["copy_number"] = tempDF["copy_number"].fillna(0)
+                sampleDataDF["nonNanCount"] += tempDF["nonNanCount"]
+                sampleDataDF["copy_number"] += tempDF["copy_number"]
+            fileCount += 1
+
+
+
+
         cellsCorrect = 0
-        fileId = sampleDict[sample]["file_id"]
-        fileName = sampleDict[sample]["file_name"]
-        sampleFile = "gdcFiles/" + fileId + "/" + fileName
-        sampleDataDF = pandas.read_csv(sampleFile, sep="\t")
+        sampleDataDF["copy_number"] = sampleDataDF.apply(lambda x: x["copy_number"]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
+        sampleDataDF = sampleDataDF.round(10)
         for row in range(len(sampleDataDF.index)):
             xenaDataCell = xenaDF.iloc[row][sample]
             sampleDataCell = sampleDataDF.iloc[row]["copy_number"]
@@ -250,7 +272,7 @@ if sorted(sampleDict) != sorted(xenaSamples):
     print("ERROR:\nSamples retrieved from GDC do not match those found in xena samples")
     exit(1)
 
-fileIDS = [sampleDict[x]["file_id"] for x in sampleDict]
+fileIDS = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
 downloadFiles(fileIDS)
 
 if compare():
