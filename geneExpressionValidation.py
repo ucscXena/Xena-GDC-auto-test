@@ -8,14 +8,14 @@ import tarfile
 import pandas
 import numpy
 
-# if ( len(sys.argv) != 3 ):
-#     print("Usage:\npython3 geneExpressionValidation.py [Project Name] [Xena File Path]")
-#     exit(1)
+if ( len(sys.argv) != 3 ):
+    print("Usage:\npython3 geneExpressionValidation.py [Project Name] [Xena File Path]")
+    exit(1)
 
-# projectName = sys.argv[1]
-projectName = "CPTAC-3"
-# xenaFilePath = sys.argv[2]
-xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CPTAC-3/Xena_Matrices/CPTAC-3.star_counts.tsv"
+projectName = sys.argv[1]
+# projectName = "CPTAC-3"
+xenaFilePath = sys.argv[2]
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CPTAC-3/Xena_Matrices/CPTAC-3.star_counts.tsv"
 
 dataType = "unstranded"
 workflowType = "STAR - Counts"
