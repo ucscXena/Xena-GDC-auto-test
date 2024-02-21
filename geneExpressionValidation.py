@@ -1,5 +1,6 @@
 import os
 import sys
+
 import requests
 import json
 import subprocess
@@ -177,6 +178,15 @@ def dataTypeSamples(samples):
                     "field": "cases.samples.submitter_id",
                     "value": samples
                 }
+            },
+            {
+                "op": "in",
+                "content": {
+                    "field": "cases.samples.tissue_type",
+                    "value": [
+                        "tumor"
+                    ]
+                }
             }
         ]
     }
@@ -192,7 +202,12 @@ def dataTypeSamples(samples):
     for caseDict in responseJson:
         for sample in caseDict["cases"][0]["samples"]:
             sampleName = sample["submitter_id"]
-            dataTypeDict[sampleName] = dict(file_id=caseDict["file_id"], file_name=caseDict["file_name"])
+            if sample["tissue_type"] == "Tumor":
+                if sampleName in dataTypeDict:
+                    dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
+                else:
+                    dataTypeDict[sampleName] = {}
+                    dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
     return dataTypeDict
 
 
@@ -206,14 +221,34 @@ def compare():
     samplesCorrect = 0
     sampleNum = 0
     for sample in sampleDict:
+        fileCount = 0
         print(f"Sample: {sample}\nSample Number: {sampleNum}\n\n")
+        for fileID in sampleDict[sample]:
+            fileName = sampleDict[sample][fileID]
+            sampleFile = "gdcFiles/" + fileID + "/" + fileName
+            if fileCount == 0:
+                sampleDataDF = pandas.read_csv(sampleFile, sep="\t")
+                sampleDataDF = sampleDataDF.drop(sampleDataDF.index[:5])
+                sampleDataDF.rename(columns={'# gene-model: GENCODE v36': sample}, inplace=True)
+                sampleDataDF["nonNanCount"] = 0
+                sampleDataDF["nonNanCount"] = sampleDataDF.apply(
+                    lambda x: 1 if (not (pandas.isna(x[sample]))) else 0, axis=1)
+                sampleDataDF[sample] = sampleDataDF[sample].fillna(0)
+            else:
+                tempDF = pandas.read_csv(sampleFile, sep="\t")
+                tempDF["nonNanCount"] = 0
+                tempDF["nonNanCount"] = tempDF.apply(lambda x: 1 if (not (pandas.isna(x[sample]))) else 0,
+                                                     axis=1)
+                tempDF[sample] = tempDF[sample].fillna(0)
+                sampleDataDF["nonNanCount"] += tempDF["nonNanCount"]
+                sampleDataDF[sample] += tempDF[sample]
+            fileCount += 1
+
         cellsCorrect = 0
-        fileId = sampleDict[sample]["file_id"]
-        fileName = sampleDict[sample]["file_name"]
-        sampleFile = "gdcFiles/" + fileId + "/" + fileName
-        sampleDataDF = pandas.read_csv(sampleFile, sep="\t", skiprows=1)
-        sampleDataDF = sampleDataDF.drop([0, 1, 2, 3])
-        sampleDataDF[dataType] = (numpy.log2(sampleDataDF[dataType] + 1)).round(10)
+
+        sampleDataDF[sample] = sampleDataDF.apply(lambda x: x[sample]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
+        sampleDataDF[sample] = numpy.log2(sampleDataDF[sample] + 1)
+        sampleDataDF[sample] = sampleDataDF.round(10)
         for row in range(len(sampleDataDF.index)):
             xenaDataCell = xenaDF.iloc[row][sample]
             sampleDataCell = sampleDataDF.iloc[row][dataType]
@@ -221,6 +256,8 @@ def compare():
                 cellsCorrect += 1
             else:
                 print(f"wrong comparison, Sample {sample}, index {row}")
+                print(f"Xena Value: {xenaDataCell}")
+                print(f"Retrieved Value: {sampleDataCell}")
         if cellsCorrect == len(sampleDataDF.index):
             samplesCorrect += 1
         sampleNum += 1
@@ -242,7 +279,7 @@ if sorted(sampleDict) != sorted(xenaSamples):
     print([x for x in xenaSamples if x not in sampleDict])
     exit(1)
 
-fileIDS = [sampleDict[x]["file_id"] for x in sampleDict]
+fileIDS = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
 downloadFiles(fileIDS)
 
 if compare():
