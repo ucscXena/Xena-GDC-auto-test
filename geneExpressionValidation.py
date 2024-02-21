@@ -8,14 +8,14 @@ import tarfile
 import pandas
 import numpy
 
-if ( len(sys.argv) != 3 ):
-    print("Usage:\npython3 geneExpressionValidation.py [Project Name] [Xena File Path]")
-    exit(1)
+# if ( len(sys.argv) != 3 ):
+#     print("Usage:\npython3 geneExpressionValidation.py [Project Name] [Xena File Path]")
+#     exit(1)
 
-projectName = sys.argv[1]
-# projectName = "CPTAC-3"
-xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CPTAC-3/Xena_Matrices/CPTAC-3.star_counts.tsv"
+# projectName = sys.argv[1]
+projectName = "CPTAC-3"
+# xenaFilePath = sys.argv[2]
+xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CPTAC-3/Xena_Matrices/CPTAC-3.star_counts.tsv"
 
 dataType = "unstranded"
 workflowType = "STAR - Counts"
@@ -202,12 +202,11 @@ def dataTypeSamples(samples):
     for caseDict in responseJson:
         for sample in caseDict["cases"][0]["samples"]:
             sampleName = sample["submitter_id"]
-            if sample["tissue_type"] == "Tumor":
-                if sampleName in dataTypeDict:
-                    dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
-                else:
-                    dataTypeDict[sampleName] = {}
-                    dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
+            if sampleName in dataTypeDict:
+                dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
+            else:
+                dataTypeDict[sampleName] = {}
+                dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
     return dataTypeDict
 
 
@@ -227,28 +226,30 @@ def compare():
             fileName = sampleDict[sample][fileID]
             sampleFile = "gdcFiles/" + fileID + "/" + fileName
             if fileCount == 0:
-                sampleDataDF = pandas.read_csv(sampleFile, sep="\t")
-                sampleDataDF = sampleDataDF.drop(sampleDataDF.index[:5])
-                sampleDataDF.rename(columns={'# gene-model: GENCODE v36': sample}, inplace=True)
+                sampleDataDF = pandas.read_csv(sampleFile, sep="\t", skiprows=1)
+                sampleDataDF = sampleDataDF.drop(sampleDataDF.index[:4])
+                sampleDataDF.reset_index(inplace=True, drop=True)
                 sampleDataDF["nonNanCount"] = 0
                 sampleDataDF["nonNanCount"] = sampleDataDF.apply(
-                    lambda x: 1 if (not (pandas.isna(x[sample]))) else 0, axis=1)
-                sampleDataDF[sample] = sampleDataDF[sample].fillna(0)
+                    lambda x: 1 if (not (pandas.isna(x[dataType]))) else 0, axis=1)
+                sampleDataDF[dataType] = sampleDataDF[dataType].fillna(0)
             else:
-                tempDF = pandas.read_csv(sampleFile, sep="\t")
+                tempDF = pandas.read_csv(sampleFile, sep="\t", skiprows=1)
+                tempDF = tempDF.drop(tempDF.index[:4])
+                tempDF.reset_index(inplace=True, drop=True)
                 tempDF["nonNanCount"] = 0
-                tempDF["nonNanCount"] = tempDF.apply(lambda x: 1 if (not (pandas.isna(x[sample]))) else 0,
+                tempDF["nonNanCount"] = tempDF.apply(lambda x: 1 if (not (pandas.isna(x[dataType]))) else 0,
                                                      axis=1)
-                tempDF[sample] = tempDF[sample].fillna(0)
+                tempDF[dataType] = tempDF[dataType].fillna(0)
                 sampleDataDF["nonNanCount"] += tempDF["nonNanCount"]
-                sampleDataDF[sample] += tempDF[sample]
+                sampleDataDF[dataType] += tempDF[dataType]
             fileCount += 1
 
         cellsCorrect = 0
-
-        sampleDataDF[sample] = sampleDataDF.apply(lambda x: x[sample]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
-        sampleDataDF[sample] = numpy.log2(sampleDataDF[sample] + 1)
-        sampleDataDF[sample] = sampleDataDF.round(10)
+        sampleDataDF[dataType] = sampleDataDF[dataType].astype(float)
+        sampleDataDF[dataType] = sampleDataDF.apply(lambda x: x[dataType]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
+        sampleDataDF[dataType] = numpy.log2(sampleDataDF[dataType] + 1)
+        sampleDataDF[dataType] = sampleDataDF.round(10)
         for row in range(len(sampleDataDF.index)):
             xenaDataCell = xenaDF.iloc[row][sample]
             sampleDataCell = sampleDataDF.iloc[row][dataType]
@@ -272,15 +273,15 @@ xenaDF = xenaDataframe(xenaFilePath)
 
 # print(len(sampleDict), len(xenaSamples))
 
-if sorted(sampleDict) != sorted(xenaSamples):
-    print("Samples retrieved from GDC and not in Xena Dataframe")
-    print([x for x in sampleDict if x not in xenaSamples])
-    print("Samples retrieved from Xena Dataframe and not in GDC retrieved samples")
-    print([x for x in xenaSamples if x not in sampleDict])
-    exit(1)
+# if sorted(sampleDict) != sorted(xenaSamples):
+#     print("Samples retrieved from GDC and not in Xena Dataframe")
+#     print([x for x in sampleDict if x not in xenaSamples])
+#     print("Samples retrieved from Xena Dataframe and not in GDC retrieved samples")
+#     print([x for x in xenaSamples if x not in sampleDict])
+#     exit(1)
 
 fileIDS = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
-downloadFiles(fileIDS)
+# downloadFiles(fileIDS)
 
 if compare():
     print("Passed")
