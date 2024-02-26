@@ -71,7 +71,7 @@ def downloadFiles(fileList):
         ["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
          "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
 
-    os.system("mkdir gdcFiles")
+    os.system("mkdir -p gdcFiles")
     os.system("tar -xzf gdcFiles.tar.gz -C gdcFiles")
 
 

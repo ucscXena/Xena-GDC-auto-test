@@ -6,6 +6,7 @@ import subprocess
 import tarfile
 import pandas
 import numpy
+from math import log10, floor
 
 if ( len(sys.argv) != 3 ):
     print("Usage:\npython3 cnvGeneLevelValidation.py [Project Name] [Xena File Path]")
@@ -21,6 +22,35 @@ gdcDataType = "Gene Level Copy Number"
 experimentalStrategy = "WGS"
 workflowType = "AscatNGS"
 
+# From https://github.com/corriander/python-sigfig/blob/dev/sigfig/sigfig.py
+def round_(x, n):
+    """Round a float, x, to n significant figures.
+
+	Caution should be applied when performing this operation.
+	Significant figures are an implication of precision; arbitrarily
+	truncating floats mid-calculation is probably not Good Practice in
+	almost all cases.
+
+	Rounding off a float to n s.f. results in a float. Floats are, in
+	general, approximations of decimal numbers. The point here is that
+	it is very possible to end up with an inexact number:
+
+		roundsf(0.0012395, 3)
+		0.00124
+	    roundsf(0.0012315, 3)
+		0.0012300000000000002
+
+	Basically, rounding in this way probably doesn't do what you want
+	it to.
+    """
+    n = int(n)
+    x = float(x)
+
+    if x == 0: return 0
+
+    e = floor(log10(abs(x)) - n + 1)  # exponent, 10 ** e
+    shifted_dp = x / (10 ** e)  # decimal place shifted n d.p.
+    return round(shifted_dp) * (10 ** e)  # round and revert
 
 def downloadFiles(fileList):
     jsonPayload = {
@@ -33,7 +63,7 @@ def downloadFiles(fileList):
     subprocess.run(["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
                      "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
 
-    os.system("mkdir gdcFiles")
+    os.system("mkdir -p gdcFiles")
     os.system("tar -xzf gdcFiles.tar.gz -C gdcFiles")
 
 
@@ -122,7 +152,6 @@ def unpeelJson(jsonObj):
 
 def dataTypeSamples(samples):
     filesEndpt = "https://api.gdc.cancer.gov/files"
-    # MAKE IT SO THAT FILTER GETS DATA TYPE INSERTED
     dataTypeFilter = {
         "op": "and",
         "content": [
@@ -210,7 +239,7 @@ def dataTypeSamples(samples):
 
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t", index_col=0)
-    xenaDF = xenaDF.round(10)
+    xenaDF = xenaDF.apply(round_, n=3)
     return xenaDF
 
 
@@ -242,7 +271,7 @@ def compare():
 
         cellsCorrect = 0
         sampleDataDF["copy_number"] = sampleDataDF.apply(lambda x: x["copy_number"]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
-        sampleDataDF = sampleDataDF.round(10)
+        sampleDataDF = sampleDataDF.apply(round_, n=3)
         for row in range(len(sampleDataDF.index)):
             xenaDataCell = xenaDF.iloc[row][sample]
             sampleDataCell = sampleDataDF.iloc[row]["copy_number"]
@@ -269,7 +298,10 @@ xenaDF = xenaDataframe(xenaFilePath)
 # print(f"Xena Samples:\n{sorted(xenaSamples)}")
 
 if sorted(sampleDict) != sorted(xenaSamples):
-    print("ERROR:\nSamples retrieved from GDC do not match those found in xena samples")
+    print("Samples retrieved from GDC and not in Xena Dataframe")
+    print([x for x in sampleDict if x not in xenaSamples])
+    print("Samples retrieved from Xena Dataframe and not in GDC retrieved samples")
+    print([x for x in xenaSamples if x not in sampleDict])
     exit(1)
 
 fileIDS = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
