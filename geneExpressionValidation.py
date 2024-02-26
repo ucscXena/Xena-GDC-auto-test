@@ -242,7 +242,8 @@ def dataTypeSamples(samples):
 
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t", index_col=0)
-    xenaDF = xenaDF.apply(round_, n=3)
+    for column in xenaDF:
+        xenaDF[column] = xenaDF[column].apply(round_, n=3)
     return xenaDF
 
 
@@ -279,7 +280,7 @@ def compare():
         sampleDataDF[dataType] = sampleDataDF[dataType].astype(float)
         sampleDataDF[dataType] = sampleDataDF.apply(lambda x: x[dataType]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
         sampleDataDF[dataType] = numpy.log2(sampleDataDF[dataType] + 1)
-        sampleDataDF[dataType] = sampleDataDF.apply(round_, n=3)
+        sampleDataDF[dataType] = sampleDataDF[dataType].apply(round_, n=3)
         for row in range(len(sampleDataDF.index)):
             xenaDataCell = xenaDF.iloc[row][sample]
             sampleDataCell = sampleDataDF.iloc[row][dataType]
