@@ -208,15 +208,6 @@ def dataTypeSamples(samples):
                     "field": "cases.samples.submitter_id",
                     "value": samples
                 }
-            },
-            {
-                "op": "in",
-                "content": {
-                    "field": "cases.samples.tissue_type",
-                    "value": [
-                        "tumor"
-                    ]
-                }
             }
         ]
     }
