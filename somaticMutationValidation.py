@@ -257,9 +257,9 @@ def dataTypeSamples(samples):
 
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t")
-    xenaDF["dna_vaf"] = xenaDF["dna_vaf"].apply(round_, n=3)
+    for column in xenaDF:
+        xenaDF[column] = xenaDF[column].apply(round_, n=3)
     return xenaDF
-
 
 def nonEmptySamples():
     nonEmpty = []

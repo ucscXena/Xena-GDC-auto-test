@@ -235,9 +235,9 @@ def miRNASamples(samples):
 
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t", index_col=0)
-    xenaDF = xenaDF.apply(round_, n=3)
+    for column in xenaDF:
+        xenaDF[column] = xenaDF[column].apply(round_, n=3)
     return xenaDF
-
 
 def compare():
     samplesCorrect = 0
