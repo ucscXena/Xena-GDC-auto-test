@@ -8,6 +8,7 @@ import tarfile
 import pandas
 import numpy
 from math import log10, floor
+from concurrent.futures import ThreadPoolExecutor
 
 if ( len(sys.argv) != 3 ):
     print("Usage:\npython3 geneExpressionValidation.py [Project Name] [Xena File Path]")
@@ -53,6 +54,12 @@ def round_(x, n):
     e = floor(log10(abs(x)) - n + 1)  # exponent, 10 ** e
     shifted_dp = x / (10 ** e)  # decimal place shifted n d.p.
     return round(shifted_dp) * (10 ** e)  # round and revert
+
+# Define your custom rounding function
+def custom_round(chunk):
+    for col in chunk:
+        chunk[col] = chunk[col].apply(lambda x: round_(x, 3) if pandas.notna(x) else numpy.nan)
+    return chunk
 
 def downloadFiles(fileList):
     jsonPayload = {
@@ -233,9 +240,13 @@ def dataTypeSamples(samples):
 
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t", index_col=0)
-    for column in xenaDF:
-        xenaDF[column] = xenaDF[column].apply(round_, n=3)
-    return xenaDF
+    splitDF = numpy.array_split(xenaDF.columns, 32)
+    tasks = [xenaDF[i] for i in splitDF]
+    with ThreadPoolExecutor() as executor:
+        result = executor.map(custom_round, tasks)
+
+    resultDF = pandas.concat(result, axis=1)
+    return resultDF
 
 
 def compare():
