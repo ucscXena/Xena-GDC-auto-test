@@ -290,7 +290,7 @@ def compare():
     return samplesCorrect == len(sampleDict)
 
 
-xenaFilePath = "/Users/jaimes28/Desktop/gdcData/TCGA-KICH/Xena_Matrices/TCGA-KICH.methylation450.tsv"
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/TCGA-KICH/Xena_Matrices/TCGA-KICH.methylation450.tsv"
 xenaSamples = getXenaSamples(xenaFilePath)
 
 allSamples = getAllSamples(projectName)
