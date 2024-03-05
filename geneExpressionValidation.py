@@ -292,7 +292,7 @@ def compare():
         sampleDataDF[dataType] = numpy.log2(sampleDataDF[dataType] + 1)
 
         pool = multiprocessing.Pool()
-        sampleDataDF[dataType] = pool.map(round_ForNans, sampleDataDF)
+        sampleDataDF[dataType] = pool.map(round_ForNans, sampleDataDF[dataType])
 
         # sampleDataDF[dataType] = sampleDataDF[dataType].apply(round_, n=3)
         for row in range(len(sampleDataDF.index)):
