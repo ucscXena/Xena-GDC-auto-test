@@ -9,6 +9,7 @@ import pandas
 import numpy
 from math import log10, floor
 from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
 
 if ( len(sys.argv) != 3 ):
     print("Usage:\npython3 geneExpressionValidation.py [Project Name] [Xena File Path]")
@@ -60,6 +61,13 @@ def custom_round(chunk):
     for col in chunk:
         chunk[col] = chunk[col].apply(lambda x: round_(x, 3) if pandas.notna(x) else numpy.nan)
     return chunk
+
+def round_ForNans(x):
+    if( pandas.notna(x) ):
+        return round_(x, 3)
+    else:
+        return numpy.nan
+
 
 def downloadFiles(fileList):
     jsonPayload = {
@@ -282,7 +290,11 @@ def compare():
         sampleDataDF[dataType] = sampleDataDF[dataType].astype(float)
         sampleDataDF[dataType] = sampleDataDF.apply(lambda x: x[dataType]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
         sampleDataDF[dataType] = numpy.log2(sampleDataDF[dataType] + 1)
-        sampleDataDF[dataType] = sampleDataDF[dataType].apply(round_, n=3)
+
+        pool = multiprocessing.Pool()
+        sampleDataDF[dataType] = pool.map(round_ForNans, sampleDataDF)
+
+        # sampleDataDF[dataType] = sampleDataDF[dataType].apply(round_, n=3)
         for row in range(len(sampleDataDF.index)):
             xenaDataCell = xenaDF.iloc[row][sample]
             sampleDataCell = sampleDataDF.iloc[row][dataType]
