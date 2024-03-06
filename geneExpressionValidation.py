@@ -296,7 +296,7 @@ def compare():
         sampleDataDF[dataType] = roundedSeries
         # pool = multiprocessing.Pool()
         # sampleDataDF[dataType] = pool.map(round_ForNans, sampleDataDF[dataType])
-        if( sampleDataDF[dataType].equals(xenaDF[dataType])):
+        if( sampleDataDF[dataType].equals(xenaDF[sample])):
             samplesCorrect += 1
         # sampleDataDF[dataType] = sampleDataDF[dataType].apply(round_, n=3)
         # for row in range(len(sampleDataDF.index)):
