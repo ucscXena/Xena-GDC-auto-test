@@ -291,8 +291,11 @@ def compare():
         sampleDataDF[dataType] = sampleDataDF.apply(lambda x: x[dataType]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
         sampleDataDF[dataType] = numpy.log2(sampleDataDF[dataType] + 1)
 
-        pool = multiprocessing.Pool()
-        sampleDataDF[dataType] = pool.map(round_ForNans, sampleDataDF[dataType])
+        vectorRound = numpy.vectorize(round_ForNans)
+        roundedSeries = vectorRound(sampleDataDF[dataType])
+        sampleDataDF[dataType] = roundedSeries
+        # pool = multiprocessing.Pool()
+        # sampleDataDF[dataType] = pool.map(round_ForNans, sampleDataDF[dataType])
 
         # sampleDataDF[dataType] = sampleDataDF[dataType].apply(round_, n=3)
         for row in range(len(sampleDataDF.index)):
