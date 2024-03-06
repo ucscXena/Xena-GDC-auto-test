@@ -296,20 +296,21 @@ def compare():
         sampleDataDF[dataType] = roundedSeries
         # pool = multiprocessing.Pool()
         # sampleDataDF[dataType] = pool.map(round_ForNans, sampleDataDF[dataType])
-
-        # sampleDataDF[dataType] = sampleDataDF[dataType].apply(round_, n=3)
-        for row in range(len(sampleDataDF.index)):
-            xenaDataCell = xenaDF.iloc[row][sample]
-            sampleDataCell = sampleDataDF.iloc[row][dataType]
-            if (xenaDataCell == sampleDataCell) or (pandas.isna(xenaDataCell) and pandas.isna(sampleDataCell)):
-                cellsCorrect += 1
-            else:
-                print(f"wrong comparison, Sample {sample}, index {row}")
-                print(f"Xena Value: {xenaDataCell}")
-                print(f"Retrieved Value: {sampleDataCell}")
-        if cellsCorrect == len(sampleDataDF.index):
+        if( sampleDataDF[dataType].equals(xenaDF[dataType])):
             samplesCorrect += 1
-        sampleNum += 1
+        # sampleDataDF[dataType] = sampleDataDF[dataType].apply(round_, n=3)
+        # for row in range(len(sampleDataDF.index)):
+        #     xenaDataCell = xenaDF.iloc[row][sample]
+        #     sampleDataCell = sampleDataDF.iloc[row][dataType]
+        #     if (xenaDataCell == sampleDataCell) or (pandas.isna(xenaDataCell) and pandas.isna(sampleDataCell)):
+        #         cellsCorrect += 1
+        #     else:
+        #         print(f"wrong comparison, Sample {sample}, index {row}")
+        #         print(f"Xena Value: {xenaDataCell}")
+        #         print(f"Retrieved Value: {sampleDataCell}")
+        # if cellsCorrect == len(sampleDataDF.index):
+        #     samplesCorrect += 1
+        # sampleNum += 1
     return samplesCorrect == len(sampleDict)
 
 
