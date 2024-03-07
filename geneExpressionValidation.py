@@ -310,7 +310,7 @@ def compare():
         #         print(f"Retrieved Value: {sampleDataCell}")
         # if cellsCorrect == len(sampleDataDF.index):
         #     samplesCorrect += 1
-        # sampleNum += 1
+        sampleNum += 1
     return samplesCorrect == len(sampleDict)
 
 
