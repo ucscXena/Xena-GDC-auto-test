@@ -24,6 +24,12 @@ experimentalStrategy = "WXS"
 workflowType = "Aliquot Ensemble Somatic Variant Merging and Masking"
 
 
+def round_ForNans(x):
+    if( pandas.notna(x) ):
+        return numpy.format_float_scientific(x, precision=10)
+    else:
+        return numpy.nan
+
 # From https://github.com/corriander/python-sigfig/blob/dev/sigfig/sigfig.py
 def round_(x, n):
     """Round a float, x, to n significant figures.
@@ -56,7 +62,7 @@ def round_(x, n):
 
 
 def vaf(t_alt_count, t_depth):
-    return round_(t_alt_count / t_depth, 3)
+    return round_ForNans(t_alt_count / t_depth)
 
 
 def downloadFiles(fileList):
@@ -258,7 +264,7 @@ def dataTypeSamples(samples):
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t")
     for column in xenaDF:
-        xenaDF[column] = xenaDF[column].apply(round_, n=3)
+        xenaDF[column] = xenaDF[column].apply(round_ForNans)
     return xenaDF
 
 def nonEmptySamples():
@@ -308,7 +314,7 @@ def sampleDataframe():
             ["gene", "chrom", "start", "end", "ref", "alt", "Tumor_Sample_Barcode", "Amino_Acid_Change", "effect",
              "callers", "dna_vaf"]]
         sampleDataDF.insert(0, "sample", normalSampleName)
-        sampleDataDF["dna_vaf"] = sampleDataDF["dna_vaf"].apply(round_, n=3)
+        sampleDataDF["dna_vaf"] = sampleDataDF["dna_vaf"].apply(round_ForNans)
 
         dataFrame = pandas.concat([dataFrame, sampleDataDF])
     return dataFrame

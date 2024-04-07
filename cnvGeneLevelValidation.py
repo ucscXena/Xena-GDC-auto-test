@@ -22,6 +22,12 @@ gdcDataType = "Gene Level Copy Number"
 experimentalStrategy = "WGS"
 workflowType = "AscatNGS"
 
+def round_ForNans(x):
+    if( pandas.notna(x) ):
+        return numpy.format_float_scientific(x, precision=10)
+    else:
+        return numpy.nan
+
 # From https://github.com/corriander/python-sigfig/blob/dev/sigfig/sigfig.py
 def round_(x, n):
     """Round a float, x, to n significant figures.
@@ -241,7 +247,7 @@ def dataTypeSamples(samples):
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t", index_col=0)
     for column in xenaDF:
-        xenaDF[column] = xenaDF[column].apply(round_, n=3)
+        xenaDF[column] = xenaDF[column].apply(round_ForNans)
     return xenaDF
 
 
@@ -273,7 +279,7 @@ def compare():
 
         cellsCorrect = 0
         sampleDataDF["copy_number"] = sampleDataDF.apply(lambda x: x["copy_number"]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
-        sampleDataDF = sampleDataDF.apply(round_, n=3)
+        sampleDataDF = sampleDataDF.apply(round_ForNans)
         for row in range(len(sampleDataDF.index)):
             xenaDataCell = xenaDF.iloc[row][sample]
             sampleDataCell = sampleDataDF.iloc[row]["copy_number"]

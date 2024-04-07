@@ -66,6 +66,12 @@ def round_(x, n):
     shifted_dp = x / (10 ** e)  # decimal place shifted n d.p.
     return round(shifted_dp) * (10 ** e)  # round and revert
 
+def round_ForNans(x):
+    if( pandas.notna(x) ):
+        return numpy.format_float_scientific(x, precision=10)
+    else:
+        return numpy.nan
+
 def downloadFiles(fileList):
     jsonPayload = {
         "ids": fileList
@@ -259,7 +265,7 @@ def dataTypeSamples(samples):
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t", index_col=0)
     for column in xenaDF:
-        xenaDF[column] = xenaDF[column].apply(round_, n=3)
+        xenaDF[column] = xenaDF[column].apply(round_ForNans)
     return xenaDF
 
 def compare():
@@ -272,7 +278,7 @@ def compare():
         fileName = sampleDict[sample]["file_name"]
         sampleFile = "gdcFiles/" + fileId + "/" + fileName
         sampleDataDF = pandas.read_csv(sampleFile, sep="\t", names=["compElement", "betaValue"], skiprows=1)
-        sampleDataDF = sampleDataDF.apply(round_, n=3)
+        sampleDataDF = sampleDataDF.apply(round_ForNans)
         if len(sampleDataDF.index) != len(xenaDF.index):
             print(f"Xena and Sample rows are not equal for sample {sample}\n")
             sampleNum += 1

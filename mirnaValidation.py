@@ -74,6 +74,12 @@ allSamplesFilter = {
         ]
     }
 
+def round_ForNans(x):
+    if( pandas.notna(x) ):
+        return numpy.format_float_scientific(x, precision=10)
+    else:
+        return numpy.nan
+
 # From https://github.com/corriander/python-sigfig/blob/dev/sigfig/sigfig.py
 def round_(x, n):
     """Round a float, x, to n significant figures.
@@ -236,7 +242,7 @@ def miRNASamples(samples):
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t", index_col=0)
     for column in xenaDF:
-        xenaDF[column] = xenaDF[column].apply(round_, n=3)
+        xenaDF[column] = xenaDF[column].apply(round_ForNans)
     return xenaDF
 
 def compare():
@@ -248,7 +254,7 @@ def compare():
         fileName = mirnaSamplesDict[sample]["file_name"]
         sampleFile = "gdcFiles/" + fileId + "/" + fileName
         sampleDataDF = pandas.read_csv(sampleFile, sep="\t", index_col=0)
-        sampleDataDF[mirnaDataTitle] = (numpy.log2(sampleDataDF[mirnaDataTitle] + 1)).apply(round_, n=3)
+        sampleDataDF[mirnaDataTitle] = (numpy.log2(sampleDataDF[mirnaDataTitle] + 1)).apply(round_ForNans)
         for row in range(len(sampleDataDF.index)):
             xenaDataCell = xenaDF.iloc[row][sample]
             sampleDataCell = sampleDataDF.iloc[row][mirnaDataTitle]

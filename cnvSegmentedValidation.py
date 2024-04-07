@@ -8,6 +8,7 @@ import json
 import subprocess
 import tarfile
 import pandas
+import numpy
 from math import floor, log10
 
 if ( len(sys.argv) != 3 ):
@@ -22,6 +23,12 @@ dataCategory = "copy number variation"
 gdcDataType = "Copy Number Segment"
 experimentalStrategy = "WGS"
 workflowType = "AscatNGS"
+
+def round_ForNans(x):
+    if( pandas.notna(x) ):
+        return numpy.format_float_scientific(x, precision=10)
+    else:
+        return numpy.nan
 
 # From https://github.com/corriander/python-sigfig/blob/dev/sigfig/sigfig.py
 def round_(x, n):
@@ -243,7 +250,7 @@ def dataTypeSamples(samples):
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t")
     for column in xenaDF:
-        xenaDF[column] = xenaDF[column].apply(round_, n=3)
+        xenaDF[column] = xenaDF[column].apply(round_ForNans)
     return xenaDF
 
 
@@ -264,7 +271,7 @@ def sampleDataframe():
         sampleDataDF.drop(columns=['Major_Copy_Number', 'Minor_Copy_Number'], inplace=True)
         sampleDataDF.replace(sampleDataDF.iloc[0].iat[0], normalSampleName, inplace=True)
         dataFrame = pandas.concat([dataFrame, sampleDataDF])
-        dataFrame = dataFrame.apply(round_, n=3)
+        dataFrame = dataFrame.apply(round_ForNans)
     return dataFrame
 
 
