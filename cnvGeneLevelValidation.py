@@ -279,7 +279,7 @@ def compare():
 
         cellsCorrect = 0
         sampleDataDF["copy_number"] = sampleDataDF.apply(lambda x: x["copy_number"]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
-        sampleDataDF = sampleDataDF.apply(round_ForNans)
+        sampleDataDF["copy_number"] = sampleDataDF["copy_number"].apply(round_ForNans)
         for row in range(len(sampleDataDF.index)):
             xenaDataCell = xenaDF.iloc[row][sample]
             sampleDataCell = sampleDataDF.iloc[row]["copy_number"]

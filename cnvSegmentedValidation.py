@@ -249,8 +249,7 @@ def dataTypeSamples(samples):
 
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t")
-    for column in xenaDF:
-        xenaDF[column] = xenaDF[column].apply(round_ForNans)
+    xenaDF["value"] = xenaDF["value"].apply(round_ForNans)
     return xenaDF
 
 
@@ -271,7 +270,7 @@ def sampleDataframe():
         sampleDataDF.drop(columns=['Major_Copy_Number', 'Minor_Copy_Number'], inplace=True)
         sampleDataDF.replace(sampleDataDF.iloc[0].iat[0], normalSampleName, inplace=True)
         dataFrame = pandas.concat([dataFrame, sampleDataDF])
-        dataFrame = dataFrame.apply(round_ForNans)
+    dataFrame["value"] = dataFrame["value"].apply(round_ForNans)
     return dataFrame
 
 
