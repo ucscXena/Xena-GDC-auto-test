@@ -59,12 +59,12 @@ def round_(x, n):
 # Define your custom rounding function
 def custom_round(chunk):
     for col in chunk:
-        chunk[col] = chunk[col].apply(lambda x: round_(x, 3) if pandas.notna(x) else numpy.nan)
+        chunk[col] = chunk[col].apply(lambda x: numpy.format_float_scientific(x, precision=10) if pandas.notna(x) else numpy.nan)
     return chunk
 
 def round_ForNans(x):
     if( pandas.notna(x) ):
-        return round_(x, 3)
+        return numpy.format_float_scientific(x, precision=10)
     else:
         return numpy.nan
 
@@ -252,7 +252,7 @@ def xenaDataframe(xenaFile):
     tasks = [xenaDF[i] for i in splitDF]
     with ThreadPoolExecutor() as executor:
         result = executor.map(custom_round, tasks)
-
+#        print(executor._max_workers)
     resultDF = pandas.concat(result, axis=1)
     return resultDF
 
@@ -294,10 +294,17 @@ def compare():
         vectorRound = numpy.vectorize(round_ForNans)
         roundedSeries = vectorRound(sampleDataDF[dataType])
         sampleDataDF[dataType] = roundedSeries
+        #print(sampleDataDF[dataType])
+        #print(xenaDF[sample])
         # pool = multiprocessing.Pool()
         # sampleDataDF[dataType] = pool.map(round_ForNans, sampleDataDF[dataType])
+        sampleDataDF[dataType].reset_index(drop=True, inplace=True)
+        xenaDF[sample].reset_index(drop=True, inplace=True)
         if( sampleDataDF[dataType].equals(xenaDF[sample])):
+            print("success")
             samplesCorrect += 1
+        else:
+            print("fail")
         # sampleDataDF[dataType] = sampleDataDF[dataType].apply(round_, n=3)
         # for row in range(len(sampleDataDF.index)):
         #     xenaDataCell = xenaDF.iloc[row][sample]
