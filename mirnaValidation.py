@@ -14,12 +14,12 @@ if ( len(sys.argv) != 3 ):
     exit(1)
 
 projectName = sys.argv[1]
-# projectName = "CPTAC-3"
+# projectName = "CGCI-HTMCP-CC"
 xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CPTAC-3/Xena_Matrices/CPTAC-3.mirna.tsv"
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-CC/Xena_Matrices/CGCI-HTMCP-CC.mirna.tsv"
 
 workflowType = "BCGSC miRNA Profiling"
-dataCategory = "Transcriptome Profiling"
+dataCategory = "transcriptome profiling"
 gdcDataType = "miRNA Expression Quantification"
 experimentalStrategy = "miRNA-Seq"
 
@@ -149,7 +149,7 @@ def getAllSamples():
         "filters": json.dumps(allSamplesFilter),
         "fields": "submitter_sample_ids",
         "format": "json",
-        "size": 20000
+        "size": 2000000
     }
     response = requests.post(casesEndpt, json=params, headers={"Content-Type": "application/json"})
     responseJson = unpeelJson(response.json())
@@ -235,7 +235,11 @@ def miRNASamples(samples):
     for caseDict in responseJson:
         for submitterDict in caseDict["cases"][0]["samples"]:
             sampleName = submitterDict["submitter_id"]
-            mirnaSamplesDict[sampleName] = dict(file_id=caseDict["file_id"], file_name=caseDict["file_name"])
+            if sampleName in mirnaSamplesDict:
+                mirnaSamplesDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
+            else:
+                mirnaSamplesDict[sampleName] = {}
+                mirnaSamplesDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
     return mirnaSamplesDict
 
 
@@ -247,14 +251,36 @@ def xenaDataframe(xenaFile):
 
 def compare():
     samplesCorrect = 0
+    sampleNum = 0
     mirnaDataTitle = "reads_per_million_miRNA_mapped"
     for sample in mirnaSamplesDict:
+        fileCount = 0
+        print(f"Sample: {sample}\nSample Number: {sampleNum}\n\n")
+        for fileID in mirnaSamplesDict[sample]:
+            fileName = mirnaSamplesDict[sample][fileID]
+            sampleFile = "gdcFiles/" + fileID + "/" + fileName
+            if fileCount == 0:
+                sampleDataDF = pandas.read_csv(sampleFile, sep="\t", skiprows=0)
+                sampleDataDF["nonNanCount"] = 0
+                sampleDataDF["nonNanCount"] = sampleDataDF.apply(
+                    lambda x: 1 if (not (pandas.isna(x[mirnaDataTitle]))) else 0, axis=1)
+                sampleDataDF[mirnaDataTitle] = sampleDataDF[mirnaDataTitle].fillna(0)
+            else:
+                tempDF = pandas.read_csv(sampleFile, sep="\t", skiprows=0)
+                tempDF["nonNanCount"] = 0
+                tempDF["nonNanCount"] = tempDF.apply(lambda x: 1 if (not (pandas.isna(x[mirnaDataTitle]))) else 0,
+                                                     axis=1)
+                tempDF[mirnaDataTitle] = tempDF[mirnaDataTitle].fillna(0)
+                sampleDataDF["nonNanCount"] += tempDF["nonNanCount"]
+                sampleDataDF[mirnaDataTitle] += tempDF[mirnaDataTitle]
+            fileCount += 1
+        sampleDataDF[mirnaDataTitle] = sampleDataDF[mirnaDataTitle].astype(float)
+        sampleDataDF[mirnaDataTitle] = sampleDataDF.apply(lambda x: x[mirnaDataTitle]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
+        sampleDataDF[mirnaDataTitle] = numpy.log2(sampleDataDF[mirnaDataTitle] + 1)
+        sampleDataDF[mirnaDataTitle] = sampleDataDF[mirnaDataTitle].apply(round_ForNans)
+
+
         cellsCorrect = 0
-        fileId = mirnaSamplesDict[sample]["file_id"]
-        fileName = mirnaSamplesDict[sample]["file_name"]
-        sampleFile = "gdcFiles/" + fileId + "/" + fileName
-        sampleDataDF = pandas.read_csv(sampleFile, sep="\t", index_col=0)
-        sampleDataDF[mirnaDataTitle] = (numpy.log2(sampleDataDF[mirnaDataTitle] + 1)).apply(round_ForNans)
         for row in range(len(sampleDataDF.index)):
             xenaDataCell = xenaDF.iloc[row][sample]
             sampleDataCell = sampleDataDF.iloc[row][mirnaDataTitle]
@@ -264,6 +290,7 @@ def compare():
                 print(f"wrong comparison, Sample {sample}, index {row}")
         if cellsCorrect == len(sampleDataDF.index):
             samplesCorrect += 1
+        sampleNum += 1
     return samplesCorrect == len(mirnaSamplesDict)
 
 
@@ -285,7 +312,7 @@ if sorted(mirnaSamplesDict) != sorted(xenaSamples):
 
     exit(1)
 
-fileIDS = [mirnaSamplesDict[x]["file_id"] for x in mirnaSamplesDict]
+fileIDS = [fileID for sample in mirnaSamplesDict for fileID in mirnaSamplesDict[sample]]
 downloadFiles(fileIDS)
 
 if compare():
