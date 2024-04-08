@@ -286,7 +286,6 @@ def compare():
                 sampleDataDF[dataType] += tempDF[dataType]
             fileCount += 1
 
-        cellsCorrect = 0
         sampleDataDF[dataType] = sampleDataDF[dataType].astype(float)
         sampleDataDF[dataType] = sampleDataDF.apply(lambda x: x[dataType]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
         sampleDataDF[dataType] = numpy.log2(sampleDataDF[dataType] + 1)
