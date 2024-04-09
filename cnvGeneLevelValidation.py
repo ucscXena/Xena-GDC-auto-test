@@ -12,9 +12,9 @@ if ( len(sys.argv) != 3 ):
     print("Usage:\npython3 cnvGeneLevelValidation.py [Project Name] [Xena File Path]")
     exit(1)
 projectName = sys.argv[1]
-# projectName = "CPTAC-3"
+# projectName = "CGCI-HTMCP-LC"
 xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CPTAC-3/Xena_Matrices/CPTAC-3.gene-level_ascat-ngs.tsv"
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.gene-level_ascat-ngs.tsv"
 
 dataType = "copy_number"
 dataCategory = "copy number variation"
@@ -247,7 +247,8 @@ def dataTypeSamples(samples):
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t", index_col=0)
     for column in xenaDF:
-        xenaDF[column] = xenaDF[column].apply(round_ForNans)
+        if pandas.api.types.is_numeric_dtype(xenaDF[column]):
+            xenaDF[column] = xenaDF[column].apply(round_ForNans)
     return xenaDF
 
 
@@ -280,14 +281,12 @@ def compare():
         cellsCorrect = 0
         sampleDataDF["copy_number"] = sampleDataDF.apply(lambda x: x["copy_number"]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
         sampleDataDF["copy_number"] = sampleDataDF["copy_number"].apply(round_ForNans)
-        for row in range(len(sampleDataDF.index)):
-            xenaDataCell = xenaDF.iloc[row][sample]
-            sampleDataCell = sampleDataDF.iloc[row]["copy_number"]
-            if (xenaDataCell == sampleDataCell) or (pandas.isna(xenaDataCell) and pandas.isna(sampleDataCell)):
-                cellsCorrect += 1
-            else:
-                print(f"wrong comparison, Sample {sample}, index {row}")
-        if cellsCorrect == len(sampleDataDF.index):
+        xenaColumn = xenaDF[sample]
+        sampleColumn = sampleDataDF["copy_number"]
+        xenaColumn.reset_index(inplace=True, drop=True)
+        sampleColumn.reset_index(inplace=True, drop=True)
+        if (sampleColumn.equals(xenaColumn)):
+            print("success")
             samplesCorrect += 1
         sampleNum += 1
     return samplesCorrect == len(sampleDict)
