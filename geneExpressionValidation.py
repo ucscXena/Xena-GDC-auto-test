@@ -16,9 +16,9 @@ if ( len(sys.argv) != 3 ):
     exit(1)
 
 projectName = sys.argv[1]
-# projectName = "CPTAC-3"
+projectName = "CGCI-BLGSP"
 xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CPTAC-3/Xena_Matrices/CPTAC-3.star_counts.tsv"
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-BLGSP/Xena_Matrices/CGCI-BLGSP.star_counts.tsv"
 
 dataType = "unstranded"
 workflowType = "STAR - Counts"
@@ -235,15 +235,19 @@ def dataTypeSamples(samples):
     response = requests.post(filesEndpt, json=params, headers={"Content-Type": "application/json"})
     responseJson = unpeelJson(response.json())
     dataTypeDict = {}
+    uniqueSamples = []
     for caseDict in responseJson:
         for sample in caseDict["cases"][0]["samples"]:
             sampleName = sample["submitter_id"]
+            if("." in sampleName and projectName == "CGCI-BLGSP"):
+                sampleName = sampleName[:sampleName.index(".")]
             if sampleName in dataTypeDict:
                 dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
             else:
                 dataTypeDict[sampleName] = {}
                 dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
-    return dataTypeDict
+                uniqueSamples.append(sampleName)
+    return dataTypeDict, uniqueSamples
 
 
 def xenaDataframe(xenaFile):
@@ -323,12 +327,11 @@ def compare():
 xenaSamples = getXenaSamples(xenaFilePath)
 
 allSamples = getAllSamples(projectName)
-sampleDict = dataTypeSamples(allSamples)
+sampleDict, uniqueSamples = dataTypeSamples(allSamples)
 xenaDF = xenaDataframe(xenaFilePath)
-
 # print(len(sampleDict), len(xenaSamples))
 
-if sorted(sampleDict) != sorted(xenaSamples):
+if sorted(uniqueSamples) != sorted(xenaSamples):
     print("Samples retrieved from GDC and not in Xena Dataframe")
     print([x for x in sampleDict if x not in xenaSamples])
     print("Samples retrieved from Xena Dataframe and not in GDC retrieved samples")
