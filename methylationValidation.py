@@ -273,24 +273,21 @@ def compare():
     sampleNum = 1
     for sample in sampleDict:
         print(f"Sample: {sample}\nSample Number: {sampleNum}\n\n")
-        cellsCorrect = 0
         fileId = sampleDict[sample]["file_id"]
         fileName = sampleDict[sample]["file_name"]
         sampleFile = "gdcFiles/" + fileId + "/" + fileName
         sampleDataDF = pandas.read_csv(sampleFile, sep="\t", names=["compElement", "betaValue"], skiprows=1)
-        sampleDataDF = sampleDataDF.apply(round_ForNans)
+        sampleDataDF["betaValue"] = sampleDataDF["betaValue"].apply(round_ForNans)
         if len(sampleDataDF.index) != len(xenaDF.index):
             print(f"Xena and Sample rows are not equal for sample {sample}\n")
             sampleNum += 1
             continue
-        for row in range(len(sampleDataDF.index)):
-            xenaDataCell = xenaDF.iloc[row][sample]
-            sampleDataCell = sampleDataDF.iloc[row]["betaValue"]
-            if (xenaDataCell == sampleDataCell) or (pandas.isna(xenaDataCell) and pandas.isna(sampleDataCell)):
-                cellsCorrect += 1
-            else:
-                print(f"wrong comparison, Sample {sample}, index {row}")
-        if cellsCorrect == len(sampleDataDF.index):
+        xenaColumn = xenaDF[sample]
+        sampleColumn = sampleDataDF["betaValue"]
+        xenaColumn.reset_index(inplace=True, drop=True)
+        sampleColumn.reset_index(inplace=True, drop=True)
+        if (sampleColumn.equals(xenaColumn)):
+            print("success")
             samplesCorrect += 1
         sampleNum += 1
     return samplesCorrect == len(sampleDict)
