@@ -1,6 +1,5 @@
 import os
 import sys
-
 import requests
 import json
 import subprocess
@@ -16,7 +15,7 @@ if ( len(sys.argv) != 3 ):
     exit(1)
 
 projectName = sys.argv[1]
-projectName = "CGCI-BLGSP"
+# projectName = "CGCI-BLGSP"
 xenaFilePath = sys.argv[2]
 # xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-BLGSP/Xena_Matrices/CGCI-BLGSP.star_counts.tsv"
 
