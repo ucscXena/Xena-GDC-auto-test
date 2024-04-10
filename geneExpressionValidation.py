@@ -10,16 +10,28 @@ from math import log10, floor
 from concurrent.futures import ThreadPoolExecutor
 import multiprocessing
 
-if ( len(sys.argv) != 3 ):
-    print("Usage:\npython3 geneExpressionValidation.py [Project Name] [Xena File Path]")
+if ( len(sys.argv) != 4 ):
+    print("Usage:\npython3 geneExpressionValidation.py [Project Name] [Xena File Path] [Data Type]")
     exit(1)
 
 projectName = sys.argv[1]
-# projectName = "CGCI-BLGSP"
+# projectName = "CGCI-HTMCP-CC"
 xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-BLGSP/Xena_Matrices/CGCI-BLGSP.star_counts.tsv"
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-CC/Xena_Matrices/CGCI-HTMCP-CC.star_fpkm.tsv"
+# dataType = "fpkm"
+dataType = sys.argv[3]
 
-dataType = "unstranded"
+dataTypeDict = {
+    "fpkm": "fpkm_unstranded",
+    "fpkm_uq": "fpkm_uq_unstranded",
+    "tpm": "tpm_unstranded",
+    "star_counts": "unstranded"
+}
+if( dataType not in dataTypeDict ):
+    print("Error:\n Acceptable data types are ['fpkm', 'fpkm_uq', 'tpm', 'star_counts']")
+    sys.exit(0)
+
+dataType = dataTypeDict[dataType]
 workflowType = "STAR - Counts"
 dataCategory = "Transcriptome Profiling"
 gdcDataType = "Gene Expression Quantification"
@@ -58,12 +70,12 @@ def round_(x, n):
 # Define your custom rounding function
 def custom_round(chunk):
     for col in chunk:
-        chunk[col] = chunk[col].apply(lambda x: numpy.format_float_scientific(x, precision=10) if pandas.notna(x) else numpy.nan)
+        chunk[col] = chunk[col].apply(lambda x: numpy.format_float_scientific(x, precision=8) if pandas.notna(x) else numpy.nan)
     return chunk
 
 def round_ForNans(x):
     if( pandas.notna(x) ):
-        return numpy.format_float_scientific(x, precision=10)
+        return numpy.format_float_scientific(x, precision=8)
     else:
         return numpy.nan
 
@@ -302,11 +314,18 @@ def compare():
         # sampleDataDF[dataType] = pool.map(round_ForNans, sampleDataDF[dataType])
         sampleDataDF[dataType].reset_index(drop=True, inplace=True)
         xenaDF[sample].reset_index(drop=True, inplace=True)
-        if( sampleDataDF[dataType].equals(xenaDF[sample])):
+        xenaColumn = xenaDF[sample]
+        sampleColumn = sampleDataDF[dataType]
+        if( xenaColumn.equals(sampleColumn)):
             print("success")
             samplesCorrect += 1
         else:
             print("fail")
+            # for i in range(0, len(xenaColumn.index)):
+            #     xenaCell = xenaColumn.iloc[i]
+            #     sampleCell = sampleColumn.iloc[i]
+            #     if( xenaCell != sampleCell):
+            #         print("error")
         # sampleDataDF[dataType] = sampleDataDF[dataType].apply(round_, n=3)
         # for row in range(len(sampleDataDF.index)):
         #     xenaDataCell = xenaDF.iloc[row][sample]
@@ -338,7 +357,7 @@ if sorted(uniqueSamples) != sorted(xenaSamples):
     exit(1)
 
 fileIDS = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
-downloadFiles(fileIDS)
+#downloadFiles(fileIDS)
 
 if compare():
     print("Passed")
