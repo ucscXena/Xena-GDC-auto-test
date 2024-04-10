@@ -2,9 +2,9 @@ import subprocess
 import sys
 
 if(len(sys.argv) != 2):
-    print("Proper Usage: python3 geneExpressionTestingScript.py [Project Name] [Path to Project]")
+    print("Proper Usage: python3 geneExpressionTestingScript.py [Project Name]")
 
-projectName = sys.argv[2]
+projectName = sys.argv[1]
 typeDict = {'fpkm': True,
             'fpkm_uq': True,
             'tpm': True,
