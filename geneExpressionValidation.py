@@ -320,7 +320,8 @@ def compare():
             print("success")
             samplesCorrect += 1
         else:
-            print("fail")
+            print(f"{sample} failed")
+            exit(1)
             # for i in range(0, len(xenaColumn.index)):
             #     xenaCell = xenaColumn.iloc[i]
             #     sampleCell = sampleColumn.iloc[i]
@@ -357,9 +358,10 @@ if sorted(uniqueSamples) != sorted(xenaSamples):
     exit(1)
 
 fileIDS = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
-#downloadFiles(fileIDS)
+downloadFiles(fileIDS)
 
 if compare():
     print("Passed")
 else:
     print("Fail")
+    exit(1)
