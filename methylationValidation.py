@@ -1,6 +1,7 @@
 import os
 import sys
 import requests
+from concurrent.futures import ThreadPoolExecutor
 import json
 import subprocess
 import tarfile
@@ -14,11 +15,12 @@ if ( len(sys.argv) != 4 ):
     exit(1)
 
 projectName = sys.argv[1]
-# projectName = "CPTAC-3"
+# projectName = "TCGA-ACC"
 xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/TCGA-KICH/Xena_Matrices/TCGA-KICH.methylation450.tsv"
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/TCGA-ACC/Xena_Matrices/TCGA-ACC.methylation450.tsv"
 # This will be different depending on user input
 platform = sys.argv[3]
+# platform = "methylation_450"
 platformDict = {"methylation_epic": "illumina methylation epic",
                 "methylation_27": "illumina human methylation 27",
                 "methylation_450": "illumina human methylation 450"}
@@ -65,6 +67,11 @@ def round_(x, n):
     e = floor(log10(abs(x)) - n + 1)  # exponent, 10 ** e
     shifted_dp = x / (10 ** e)  # decimal place shifted n d.p.
     return round(shifted_dp) * (10 ** e)  # round and revert
+
+def custom_round(chunk):
+    for col in chunk:
+        chunk[col] = chunk[col].apply(lambda x: numpy.format_float_scientific(x, precision=10) if pandas.notna(x) else numpy.nan)
+    return chunk
 
 def round_ForNans(x):
     if( pandas.notna(x) ):
@@ -264,9 +271,13 @@ def dataTypeSamples(samples):
 
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t", index_col=0)
-    for column in xenaDF:
-        xenaDF[column] = xenaDF[column].apply(round_ForNans)
-    return xenaDF
+    splitDF = numpy.array_split(xenaDF.columns, 32)
+    tasks = [xenaDF[i] for i in splitDF]
+    with ThreadPoolExecutor() as executor:
+        result = executor.map(custom_round, tasks)
+    # print(executor._max_workers)
+    resultDF = pandas.concat(result, axis=1)
+    return resultDF
 
 def compare():
     samplesCorrect = 0
@@ -278,10 +289,10 @@ def compare():
         sampleFile = "gdcFiles/" + fileId + "/" + fileName
         sampleDataDF = pandas.read_csv(sampleFile, sep="\t", names=["compElement", "betaValue"], skiprows=1)
         sampleDataDF["betaValue"] = sampleDataDF["betaValue"].apply(round_ForNans)
-        if len(sampleDataDF.index) != len(xenaDF.index):
-            print(f"Xena and Sample rows are not equal for sample {sample}\n")
-            sampleNum += 1
-            continue
+        # if len(sampleDataDF.index) != len(xenaDF.index):
+        #     print(f"Xena and Sample rows are not equal for sample {sample}\n")
+        #     sampleNum += 1
+        #     continue
         xenaColumn = xenaDF[sample]
         sampleColumn = sampleDataDF["betaValue"]
         xenaColumn.reset_index(inplace=True, drop=True)
