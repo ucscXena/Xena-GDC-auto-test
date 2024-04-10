@@ -287,7 +287,7 @@ def compare():
         fileId = sampleDict[sample]["file_id"]
         fileName = sampleDict[sample]["file_name"]
         sampleFile = "gdcFiles/" + fileId + "/" + fileName
-        sampleDataDF = pandas.read_csv(sampleFile, sep="\t", names=["compElement", "betaValue"], skiprows=1)
+        sampleDataDF = pandas.read_csv(sampleFile, sep="\t", names=["compElement", "betaValue"], skiprows=0)
         sampleDataDF["betaValue"] = sampleDataDF["betaValue"].apply(round_ForNans)
         # if len(sampleDataDF.index) != len(xenaDF.index):
         #     print(f"Xena and Sample rows are not equal for sample {sample}\n")
