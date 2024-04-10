@@ -14,8 +14,8 @@ if ( len(sys.argv) != 3 ):
     exit(1)
 
 projectName = sys.argv[1]
-# projectName = "HCMI-CMDC"
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/HCMI-CMDC/Xena_Matrices/HCMI-CMDC.somaticmutation_snv.tsv"
+# projectName = "TCGA-ACC"
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/TCGA-ACC/Xena_Matrices/TCGA-ACC.somaticmutation_snv.tsv"
 xenaFilePath = sys.argv[2]
 
 dataCategory = "simple nucleotide variation"
@@ -62,7 +62,7 @@ def round_(x, n):
 
 
 def vaf(t_alt_count, t_depth):
-    return round_ForNans(t_alt_count / t_depth)
+    return t_alt_count / t_depth
 
 
 def downloadFiles(fileList):
@@ -263,8 +263,7 @@ def dataTypeSamples(samples):
 
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t")
-    for column in xenaDF:
-        xenaDF[column] = xenaDF[column].apply(round_ForNans)
+    xenaDF["dna_vaf"] = xenaDF["dna_vaf"].apply(round_ForNans)
     return xenaDF
 
 def nonEmptySamples():
@@ -314,9 +313,8 @@ def sampleDataframe():
             ["gene", "chrom", "start", "end", "ref", "alt", "Tumor_Sample_Barcode", "Amino_Acid_Change", "effect",
              "callers", "dna_vaf"]]
         sampleDataDF.insert(0, "sample", normalSampleName)
-        sampleDataDF["dna_vaf"] = sampleDataDF["dna_vaf"].apply(round_ForNans)
-
         dataFrame = pandas.concat([dataFrame, sampleDataDF])
+    dataFrame["dna_vaf"] = dataFrame["dna_vaf"].apply(round_ForNans)
     return dataFrame
 
 
