@@ -9,7 +9,7 @@ import pandas
 import numpy
 from math import floor, log10
 
-if ( len(sys.argv) != 4 ):
+if (len(sys.argv) != 4):
     print("Usage:\npython3 methylationValidation.py [Project Name] [Xena File Path] [methylation array generation]\n"
           "Valid Generations: [methylation_epic, methylation_27, methylation_450]")
     exit(1)
@@ -68,16 +68,20 @@ def round_(x, n):
     shifted_dp = x / (10 ** e)  # decimal place shifted n d.p.
     return round(shifted_dp) * (10 ** e)  # round and revert
 
+
 def custom_round(chunk):
     for col in chunk:
-        chunk[col] = chunk[col].apply(lambda x: numpy.format_float_scientific(x, precision=10) if pandas.notna(x) else numpy.nan)
+        chunk[col] = chunk[col].apply(
+            lambda x: numpy.format_float_scientific(x, precision=8) if pandas.notna(x) else numpy.nan)
     return chunk
 
+
 def round_ForNans(x):
-    if( pandas.notna(x) ):
+    if (pandas.notna(x)):
         return numpy.format_float_scientific(x, precision=10)
     else:
         return numpy.nan
+
 
 def downloadFiles(fileList):
     jsonPayload = {
@@ -263,11 +267,18 @@ def dataTypeSamples(samples):
     response = requests.post(filesEndpt, json=params, headers={"Content-Type": "application/json"})
     responseJson = unpeelJson(response.json())
     dataTypeDict = {}
+    uniqueSamples = []
     for caseDict in responseJson:
         for sample in caseDict["cases"][0]["samples"]:
-            dataTypeDict[sample["submitter_id"]] = dict(file_id=caseDict["file_id"], file_name=caseDict["file_name"])
+            sampleName = sample["submitter_id"]
+            if sampleName in dataTypeDict:
+                dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
+            else:
+                dataTypeDict[sampleName] = {}
+                dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
+                uniqueSamples.append(sampleName)
+    return dataTypeDict, uniqueSamples
 
-    return dataTypeDict
 
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t", index_col=0)
@@ -279,15 +290,37 @@ def xenaDataframe(xenaFile):
     resultDF = pandas.concat(result, axis=1)
     return resultDF
 
+
 def compare():
     samplesCorrect = 0
     sampleNum = 1
     for sample in sampleDict:
+        fileCount = 0
         print(f"Sample: {sample}\nSample Number: {sampleNum}\n\n")
-        fileId = sampleDict[sample]["file_id"]
-        fileName = sampleDict[sample]["file_name"]
-        sampleFile = "gdcFiles/" + fileId + "/" + fileName
-        sampleDataDF = pandas.read_csv(sampleFile, sep="\t", names=["compElement", "betaValue"], skiprows=0)
+        for fileID in sampleDict[sample]:
+            fileName = sampleDict[sample][fileID]
+            sampleFile = "gdcFiles/" + fileID + "/" + fileName
+            if fileCount == 0:
+                sampleDataDF = pandas.read_csv(sampleFile, sep="\t", names=["compElement", "betaValue"], skiprows=0)
+                sampleDataDF.reset_index(inplace=True, drop=True)
+                sampleDataDF["nonNanCount"] = 0
+                sampleDataDF["nonNanCount"] = sampleDataDF.apply(
+                    lambda x: 1 if (not (pandas.isna(x["betaValue"]))) else 0, axis=1)
+                sampleDataDF["betaValue"] = sampleDataDF["betaValue"].fillna(0)
+            else:
+                tempDF = pandas.read_csv(sampleFile, sep="\t", names=["compElement", "betaValue"], skiprows=0)
+                tempDF.reset_index(inplace=True, drop=True)
+                tempDF["nonNanCount"] = 0
+                tempDF["nonNanCount"] = tempDF.apply(lambda x: 1 if (not (pandas.isna(x["betaValue"]))) else 0,
+                                                     axis=1)
+                tempDF["betaValue"] = tempDF["betaValue"].fillna(0)
+                sampleDataDF["nonNanCount"] += tempDF["nonNanCount"]
+                sampleDataDF["betaValue"] += tempDF["betaValue"]
+            fileCount += 1
+
+        sampleDataDF["betaValue"] = sampleDataDF["betaValue"].astype(float)
+        sampleDataDF["betaValue"] = sampleDataDF.apply(lambda x: x["betaValue"]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
+
         sampleDataDF["betaValue"] = sampleDataDF["betaValue"].apply(round_ForNans)
         # if len(sampleDataDF.index) != len(xenaDF.index):
         #     print(f"Xena and Sample rows are not equal for sample {sample}\n")
@@ -308,7 +341,7 @@ def compare():
 xenaSamples = getXenaSamples(xenaFilePath)
 
 allSamples = getAllSamples(projectName)
-sampleDict = dataTypeSamples(allSamples)
+sampleDict, uniqueSamples = dataTypeSamples(allSamples)
 xenaDF = xenaDataframe(xenaFilePath)
 
 # print(len(sampleDict), len(xenaSamples))
@@ -316,11 +349,14 @@ xenaDF = xenaDataframe(xenaFilePath)
 # print(f"Retrieved Samples:\n{sorted(sampleDict)}")
 # print(f"Xena Samples:\n{sorted(xenaSamples)}")
 
-if sorted(sampleDict) != sorted(xenaSamples):
-    print("ERROR:\nSamples retrieved from GDC do not match those found in xena samples")
+if sorted(uniqueSamples) != sorted(xenaSamples):
+    print("Samples retrieved from GDC and not in Xena Dataframe")
+    print([x for x in uniqueSamples if x not in xenaSamples])
+    print("Samples retrieved from Xena Dataframe and not in GDC retrieved samples")
+    print([x for x in xenaSamples if x not in sampleDict])
     exit(1)
 
-fileIDS = [sampleDict[x]["file_id"] for x in sampleDict]
+fileIDS = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
 downloadFiles(fileIDS)
 # PASSED WITH TCGA KICH
 
@@ -328,3 +364,4 @@ if compare():
     print("Passed")
 else:
     print("Fail")
+    exit(1)
