@@ -8,19 +8,32 @@ import pandas
 import numpy
 from math import log10, floor
 
-if ( len(sys.argv) != 3 ):
-    print("Usage:\npython3 cnvGeneLevelValidation.py [Project Name] [Xena File Path]")
+if ( len(sys.argv) != 4 ):
+    print("Usage:\npython3 cnvGeneLevelValidation.py [Project Name] [Xena File Path] [Experimental Strategy]")
+    print("Valid Strategies: ['ABSOLUTE LiftOver', 'ASCAT2', 'ASCAT3', 'ASCATNGS']")
     exit(1)
 projectName = sys.argv[1]
 # projectName = "CGCI-HTMCP-LC"
 xenaFilePath = sys.argv[2]
 # xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.gene-level_ascat-ngs.tsv"
+experimentalStrategy = sys.argv[3]
+
+workflowDict = {
+    "ABSOLUTE LiftOver": "Genotyping Array",
+    "ASCAT2": "Genotyping Array",
+    "ASCAT3": "Genotyping Array",
+    "ASCATNGS": "WGS"
+}
+
+if experimentalStrategy not in workflowDict:
+    print("Invalid Experiment Strategies")
+    print("Valid Strategies: ['ABSOLUTE LiftOver', 'ASCAT2', 'ASCAT3', 'ASCATNGS']")
+    exit(1)
 
 dataType = "copy_number"
 dataCategory = "copy number variation"
 gdcDataType = "Gene Level Copy Number"
-experimentalStrategy = "WGS"
-workflowType = "AscatNGS"
+workflowType = workflowDict[experimentalStrategy]
 
 def round_ForNans(x):
     if( pandas.notna(x) ):
