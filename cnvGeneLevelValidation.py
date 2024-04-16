@@ -9,31 +9,31 @@ import numpy
 from math import log10, floor
 
 if ( len(sys.argv) != 4 ):
-    print("Usage:\npython3 cnvGeneLevelValidation.py [Project Name] [Xena File Path] [Experimental Strategy]")
-    print("Valid Strategies: ['ABSOLUTE LiftOver', 'ASCAT2', 'ASCAT3', 'ASCATNGS']")
+    print("Usage:\npython3 cnvGeneLevelValidation.py [Project Name] [Xena File Path] [Workflow Type]")
+    print("Valid Workflow Type: ['ABSOLUTE LiftOver', 'ASCAT2', 'ASCAT3', 'ASCATNGS']")
     exit(1)
 projectName = sys.argv[1]
 # projectName = "CGCI-HTMCP-LC"
 xenaFilePath = sys.argv[2]
 # xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.gene-level_ascat-ngs.tsv"
-experimentalStrategy = sys.argv[3]
+workFlowType = sys.argv[3]
 
-workflowDict = {
+experimentalStrategyDict = {
     "ABSOLUTE LiftOver": "Genotyping Array",
     "ASCAT2": "Genotyping Array",
     "ASCAT3": "Genotyping Array",
     "ASCATNGS": "WGS"
 }
 
-if experimentalStrategy not in workflowDict:
-    print("Invalid Experiment Strategies")
-    print("Valid Strategies: ['ABSOLUTE LiftOver', 'ASCAT2', 'ASCAT3', 'ASCATNGS']")
+if workFlowType not in experimentalStrategyDict:
+    print("Invalid Workflow Type")
+    print("Valid Workflow Types: ['ABSOLUTE LiftOver', 'ASCAT2', 'ASCAT3', 'ASCATNGS']")
     exit(1)
 
 dataType = "copy_number"
-dataCategory = "copy number variation"
+dataCategory = "Copy Number Variation"
 gdcDataType = "Gene Level Copy Number"
-workflowType = workflowDict[experimentalStrategy]
+experimentalStrategy = experimentalStrategyDict[workFlowType]
 
 def round_ForNans(x):
     if( pandas.notna(x) ):
