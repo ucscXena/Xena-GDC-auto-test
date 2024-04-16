@@ -16,7 +16,7 @@ projectName = sys.argv[1]
 # projectName = "CGCI-HTMCP-LC"
 xenaFilePath = sys.argv[2]
 # xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.gene-level_ascat-ngs.tsv"
-workFlowType = sys.argv[3]
+workflowType = sys.argv[3]
 
 experimentalStrategyDict = {
     "ABSOLUTE LiftOver": "Genotyping Array",
@@ -25,7 +25,7 @@ experimentalStrategyDict = {
     "ASCATNGS": "WGS"
 }
 
-if workFlowType not in experimentalStrategyDict:
+if workflowType not in experimentalStrategyDict:
     print("Invalid Workflow Type")
     print("Valid Workflow Types: ['ABSOLUTE LiftOver', 'ASCAT2', 'ASCAT3', 'ASCATNGS']")
     exit(1)
