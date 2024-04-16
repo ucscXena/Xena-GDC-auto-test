@@ -33,7 +33,7 @@ if workflowType not in experimentalStrategyDict:
 dataType = "copy_number"
 dataCategory = "Copy Number Variation"
 gdcDataType = "Gene Level Copy Number"
-experimentalStrategy = experimentalStrategyDict[workFlowType]
+experimentalStrategy = experimentalStrategyDict[workflowType]
 
 def round_ForNans(x):
     if( pandas.notna(x) ):
