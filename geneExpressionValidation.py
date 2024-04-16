@@ -37,35 +37,6 @@ dataCategory = "Transcriptome Profiling"
 gdcDataType = "Gene Expression Quantification"
 experimentalStrategy = "RNA-Seq"
 
-# From https://github.com/corriander/python-sigfig/blob/dev/sigfig/sigfig.py
-def round_(x, n):
-    """Round a float, x, to n significant figures.
-
-	Caution should be applied when performing this operation.
-	Significant figures are an implication of precision; arbitrarily
-	truncating floats mid-calculation is probably not Good Practice in
-	almost all cases.
-
-	Rounding off a float to n s.f. results in a float. Floats are, in
-	general, approximations of decimal numbers. The point here is that
-	it is very possible to end up with an inexact number:
-
-		roundsf(0.0012395, 3)
-		0.00124
-	    roundsf(0.0012315, 3)
-		0.0012300000000000002
-
-	Basically, rounding in this way probably doesn't do what you want
-	it to.
-    """
-    n = int(n)
-    x = float(x)
-
-    if x == 0: return 0
-
-    e = floor(log10(abs(x)) - n + 1)  # exponent, 10 ** e
-    shifted_dp = x / (10 ** e)  # decimal place shifted n d.p.
-    return round(shifted_dp) * (10 ** e)  # round and revert
 
 # Define your custom rounding function
 def custom_round(chunk):
@@ -352,7 +323,7 @@ xenaDF = xenaDataframe(xenaFilePath)
 
 if sorted(uniqueSamples) != sorted(xenaSamples):
     print("Samples retrieved from GDC and not in Xena Dataframe")
-    print([x for x in sampleDict if x not in xenaSamples])
+    print([x for x in uniqueSamples if x not in xenaSamples])
     print("Samples retrieved from Xena Dataframe and not in GDC retrieved samples")
     print([x for x in xenaSamples if x not in sampleDict])
     exit(1)
