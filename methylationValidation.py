@@ -11,7 +11,7 @@ from math import floor, log10
 
 if (len(sys.argv) != 4):
     print("Usage:\npython3 methylationValidation.py [Project Name] [Xena File Path] [methylation array generation]\n"
-          "Valid Generations: [methylation_epic, methylation_27, methylation_450]")
+          "Valid Generations: [methylation_epic, methylation_27, methylation_450, methylation_epicv2]")
     exit(1)
 
 projectName = sys.argv[1]
@@ -23,11 +23,11 @@ platform = sys.argv[3]
 # platform = "methylation_450"
 platformDict = {"methylation_epic": "illumina methylation epic",
                 "methylation_27": "illumina human methylation 27",
-                "methylation_450": "illumina human methylation 450"}
+                "methylation_450": "illumina human methylation 450",
+                "methylation_epicv2": "illumina methylation epic v2"}
 
 if platform not in platformDict:
-    print(
-        "Invalid methylation array generation\nValid Generations: [methylation_epic, methylation_27, methylation_450]")
+    print("Invalid methylation array generation\nValid Generations: [methylation_epic, methylation_27, methylation_450, methylation_epicv2]")
     exit(1)
 
 platform = platformDict[platform]
