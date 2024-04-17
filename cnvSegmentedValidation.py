@@ -254,7 +254,7 @@ def sampleDataframe():
             sampleDataDF.rename(columns={'Segment_Mean': 'value'}, inplace=True)
         elif( workflowType == "AscatNGS" ):
             sampleDataDF.rename(columns={'Copy_Number': 'value'}, inplace=True)
-        sampleDataDF.drop(columns=['Major_Copy_Number', 'Minor_Copy_Number', 'Num_Probes'], inplace=True)
+        sampleDataDF.drop(columns=['Major_Copy_Number', 'Minor_Copy_Number', 'Num_Probes'], inplace=True, errors="ignore")
         sampleDataDF.replace(sampleDataDF.iloc[0].iat[0], normalSampleName, inplace=True)
         dataFrame = pandas.concat([dataFrame, sampleDataDF])
     dataFrame["value"] = dataFrame["value"].apply(round_ForNans)
