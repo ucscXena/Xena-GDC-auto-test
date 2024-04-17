@@ -11,18 +11,31 @@ import pandas
 import numpy
 from math import floor, log10
 
-if ( len(sys.argv) != 3 ):
-    print("Usage:\npython3 cnvSegmentedValidation.py [Project Name] [Xena File Path]")
+if ( len(sys.argv) != 4 ):
+    print("Usage:\npython3 cnvSegmentedValidation.py [Project Name] [Xena File Path] [Workflow Type]")
+    print("Valid Workflow Types : ['AscatNGS', 'DNAcopy']")
     exit(1)
+
 projectName = sys.argv[1]
 # projectName = "HCMI-CMDC"
 xenaFilePath = sys.argv[2]
 # xenaFilePath = "/Users/jaimes28/Desktop/gdcData/HCMI-CMDC/Xena_Matrices/HCMI-CMDC.segment_cnv_ascat-ngs.tsv"
+workflowType = sys.argv[3]
+# workflowType = "AscatNGS"
 
 dataCategory = "copy number variation"
 gdcDataType = "Copy Number Segment"
-experimentalStrategy = "WGS"
-workflowType = "AscatNGS"
+
+experimentalStrategyDict = {
+    "DNAcopy": "Genotyping Array",
+    "AscatNGS": "WGS"
+}
+
+if workflowType not in experimentalStrategyDict:
+    print("Invalid Workflow Type")
+    print("Valid Workflow Types : ['AscatNGS', 'DNAcopy']")
+    exit(1)
+experimentalStrategy = experimentalStrategyDict[workflowType]
 
 def round_ForNans(x):
     if( pandas.notna(x) ):
@@ -30,35 +43,6 @@ def round_ForNans(x):
     else:
         return numpy.nan
 
-# From https://github.com/corriander/python-sigfig/blob/dev/sigfig/sigfig.py
-def round_(x, n):
-    """Round a float, x, to n significant figures.
-
-	Caution should be applied when performing this operation.
-	Significant figures are an implication of precision; arbitrarily
-	truncating floats mid-calculation is probably not Good Practice in
-	almost all cases.
-
-	Rounding off a float to n s.f. results in a float. Floats are, in
-	general, approximations of decimal numbers. The point here is that
-	it is very possible to end up with an inexact number:
-
-		roundsf(0.0012395, 3)
-		0.00124
-	    roundsf(0.0012315, 3)
-		0.0012300000000000002
-
-	Basically, rounding in this way probably doesn't do what you want
-	it to.
-    """
-    n = int(n)
-    x = float(x)
-
-    if x == 0: return 0
-
-    e = floor(log10(abs(x)) - n + 1)  # exponent, 10 ** e
-    shifted_dp = x / (10 ** e)  # decimal place shifted n d.p.
-    return round(shifted_dp) * (10 ** e)  # round and revert
 
 def downloadFiles(fileList):
     jsonPayload = {
@@ -266,8 +250,11 @@ def sampleDataframe():
         sampleDataDF = pandas.read_csv(sampleFile, sep="\t")
         sampleDataDF.rename(columns={'Chromosome': 'Chrom'}, inplace=True)
         sampleDataDF.rename(columns={'GDC_Aliquot': 'sample'}, inplace=True)
-        sampleDataDF.rename(columns={'Copy_Number': 'value'}, inplace=True)
-        sampleDataDF.drop(columns=['Major_Copy_Number', 'Minor_Copy_Number'], inplace=True)
+        if( workflowType == "DNAcopy" ):
+            sampleDataDF.rename(columns={'Segment_Mean': 'value'}, inplace=True)
+        elif( workflowType == "AscatNGS" ):
+            sampleDataDF.rename(columns={'Copy_Number': 'value'}, inplace=True)
+        sampleDataDF.drop(columns=['Major_Copy_Number', 'Minor_Copy_Number', 'Num_Probes'], inplace=True)
         sampleDataDF.replace(sampleDataDF.iloc[0].iat[0], normalSampleName, inplace=True)
         dataFrame = pandas.concat([dataFrame, sampleDataDF])
     dataFrame["value"] = dataFrame["value"].apply(round_ForNans)
@@ -316,5 +303,6 @@ else:
             # if they are not equal then output diff of both files
             sys.stdout.writelines(difflib.unified_diff(sampleFile.readlines(), xenaDfFile.readlines(),
                                                        fromfile="sampleDF.csv", tofile="xenaDF.csv"))
+            exit(1)
 
 
