@@ -24,8 +24,12 @@ workflowType = sys.argv[3]
 # workflowType = "AscatNGS"
 
 dataCategory = "copy number variation"
-gdcDataType = "Copy Number Segment"
 
+
+gdcDataTypeDict = {
+    "DNAcopy": "Masked Copy Number Segment",
+    "AscatNGS": "Copy Number Segment"
+}
 experimentalStrategyDict = {
     "DNAcopy": "Genotyping Array",
     "AscatNGS": "WGS"
@@ -36,6 +40,7 @@ if workflowType not in experimentalStrategyDict:
     print("Valid Workflow Types : ['AscatNGS', 'DNAcopy']")
     exit(1)
 experimentalStrategy = experimentalStrategyDict[workflowType]
+gdcDataType = gdcDataTypeDict[workflowType]
 
 def round_ForNans(x):
     if( pandas.notna(x) ):
