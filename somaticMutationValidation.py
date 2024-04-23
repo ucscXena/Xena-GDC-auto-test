@@ -3,62 +3,39 @@ import sys
 import requests
 import json
 import subprocess
-import tarfile
 import pandas
 import numpy
 import difflib
-from math import floor, log10
 
-if ( len(sys.argv) != 3 ):
-    print("Usage:\npython3 somaticMutationValidation.py [Project Name] [Xena File Path]")
+if (len(sys.argv) != 3):
+    print("Usage:\npython3 somaticMutationValidation.py [Project Name] [Xena File Path] [Experimental Strategy]")
+    print("Valid Experimental Strategies:\n['WXS', 'Targeted']")
     exit(1)
 
 projectName = sys.argv[1]
-# projectName = "TCGA-ACC"
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/TCGA-ACC/Xena_Matrices/TCGA-ACC.somaticmutation_snv.tsv"
+# projectName = "CGCI-HTMCP-CC"
+# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-CC/Xena_Matrices/CGCI-HTMCP-CC.somaticmutation_snv.tsv"
 xenaFilePath = sys.argv[2]
+experimentalStrategy = sys.argv[3]
+
+experimentalStrategyDict = {"WXS": "WXS",
+                            "Targeted": "Targeted Sequencing"}
+
+if experimentalStrategy not in experimentalStrategyDict:
+    print("Error: Invalid Experimental Strategy")
+    print("Valid Experimental Strategies:\n['WXS', 'Targeted']")
 
 dataCategory = "simple nucleotide variation"
 gdcDataType = "Masked Somatic Mutation"
-experimentalStrategy = "WXS"
+experimentalStrategy = experimentalStrategyDict[experimentalStrategy]
 workflowType = "Aliquot Ensemble Somatic Variant Merging and Masking"
 
 
 def round_ForNans(x):
-    if( pandas.notna(x) ):
+    if pandas.notna(x):
         return numpy.format_float_scientific(x, precision=10)
     else:
         return numpy.nan
-
-# From https://github.com/corriander/python-sigfig/blob/dev/sigfig/sigfig.py
-def round_(x, n):
-    """Round a float, x, to n significant figures.
-
-	Caution should be applied when performing this operation.
-	Significant figures are an implication of precision; arbitrarily
-	truncating floats mid-calculation is probably not Good Practice in
-	almost all cases.
-
-	Rounding off a float to n s.f. results in a float. Floats are, in
-	general, approximations of decimal numbers. The point here is that
-	it is very possible to end up with an inexact number:
-
-		roundsf(0.0012395, 3)
-		0.00124
-	    roundsf(0.0012315, 3)
-		0.0012300000000000002
-
-	Basically, rounding in this way probably doesn't do what you want
-	it to.
-    """
-    n = int(n)
-    x = float(x)
-
-    if x == 0: return 0
-
-    e = floor(log10(abs(x)) - n + 1)  # exponent, 10 ** e
-    shifted_dp = x / (10 ** e)  # decimal place shifted n d.p.
-    return round(shifted_dp) * (10 ** e)  # round and revert
 
 
 def vaf(t_alt_count, t_depth):
@@ -266,6 +243,7 @@ def xenaDataframe(xenaFile):
     xenaDF["dna_vaf"] = xenaDF["dna_vaf"].apply(round_ForNans)
     return xenaDF
 
+
 def nonEmptySamples():
     nonEmpty = []
     allSampleNames = []
@@ -353,11 +331,16 @@ with open("sampleDF.csv", "w") as sampleFile:
 with open("xenaDF.csv", "w") as xenaDfFile:
     xenaDF.to_csv(xenaDfFile)
 
-
 try:
     pandas.testing.assert_frame_equal(sampleDf, xenaDF, check_dtype=False)
     print("Passed")
 except AssertionError:
+    # diff = sampleDf.merge(xenaDF, indicator=True, how='left').loc[lambda x: x['_merge'] != 'both']
+    # for i in range(0, len(sampleDf)):
+    #     xenaRow = xenaDF.iloc[i]
+    #     sampleRow = sampleDf.iloc[i]
+    #     if not(sampleRow.equals(xenaRow)):
+    #         print("err")
     with open("sampleDF.csv", "r") as sampleFile:
         with open("xenaDF.csv", "r") as xenaDfFile:
             # if they are not equal then output diff of both files
