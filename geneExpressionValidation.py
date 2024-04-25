@@ -221,8 +221,6 @@ def dataTypeSamples(samples):
     for caseDict in responseJson:
         for sample in caseDict["cases"][0]["samples"]:
             sampleName = sample["submitter_id"]
-            if("." in sampleName and projectName == "CGCI-BLGSP"):
-                sampleName = sampleName[:sampleName.index(".")]
             if sampleName in dataTypeDict:
                 dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
             else:
