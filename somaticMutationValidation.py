@@ -7,7 +7,7 @@ import pandas
 import numpy
 import difflib
 
-if (len(sys.argv) != 3):
+if (len(sys.argv) != 4):
     print("Usage:\npython3 somaticMutationValidation.py [Project Name] [Xena File Path] [Experimental Strategy]")
     print("Valid Experimental Strategies:\n['WXS', 'Targeted']")
     exit(1)
