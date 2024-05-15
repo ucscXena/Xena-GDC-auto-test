@@ -7,6 +7,7 @@ if(len(sys.argv) < 2):
 projects = sys.argv[1:]
 results = []
 
+print(projects)
 for project in projects: 
     typeDict = {'star_counts': True,
                 'tpm': True,
@@ -27,4 +28,3 @@ for project in projects:
 
 for result in results: 
     print(f'{result[0]}: {result[1]}')
-    
