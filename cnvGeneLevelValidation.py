@@ -1,4 +1,5 @@
 import os
+import logging
 import sys
 import requests
 import json
@@ -8,32 +9,9 @@ import pandas
 import numpy
 from math import log10, floor
 
-if ( len(sys.argv) != 4 ):
-    print("Usage:\npython3 cnvGeneLevelValidation.py [Project Name] [Xena File Path] [Workflow Type]")
-    print("Valid Workflow Type: ['ABSOLUTE LiftOver', 'ASCAT2', 'ASCAT3', 'AscatNGS']")
-    exit(1)
-projectName = sys.argv[1]
-# projectName = "CGCI-HTMCP-LC"
-xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-LC/Xena_Matrices/CGCI-HTMCP-LC.gene-level_ascat-ngs.tsv"
-workflowType = sys.argv[3]
 
-experimentalStrategyDict = {
-    "ABSOLUTE LiftOver": "Genotyping Array",
-    "ASCAT2": "Genotyping Array",
-    "ASCAT3": "Genotyping Array",
-    "AscatNGS": "WGS"
-}
+logger = logging.getLogger(__name__)
 
-if workflowType not in experimentalStrategyDict:
-    print("Invalid Workflow Type")
-    print("Valid Workflow Types: ['ABSOLUTE LiftOver', 'ASCAT2', 'ASCAT3', 'AscatNGS']")
-    exit(1)
-
-dataType = "copy_number"
-dataCategory = "Copy Number Variation"
-gdcDataType = "Gene Level Copy Number"
-experimentalStrategy = experimentalStrategyDict[workflowType]
 
 def round_ForNans(x):
     if( pandas.notna(x) ):
@@ -49,11 +27,9 @@ def downloadFiles(fileList):
     }
     with open("payload.txt", "w") as payloadFile:
         payloadFile.write(str(jsonPayload).replace("\'", "\""))
-
-    print("Downloading from GDC: ")
+    logger.info("Downloading from GDC: ")
     subprocess.run(["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
                      "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
-
     os.system("mkdir -p gdcFiles")
     os.system("tar -xzf gdcFiles.tar.gz -C gdcFiles")
 
@@ -64,10 +40,11 @@ def getXenaSamples(xenaFile):  # get all samples from the xena matrix
         sampleList = header.split("\t")  # split tsv file into list
         sampleList.pop(0)  # remove unnecessary label
         sampleList = [sample.strip() for sample in sampleList]  # make sure there isn't extra whitespace
+    
     return sampleList
 
 
-def getAllSamples(projectName):
+def getAllSamples(projectName, workflowType, experimentalStrategy):
     casesEndpt = "https://api.gdc.cancer.gov/cases"
     allSamplesFilter = {
         "op": "and",
@@ -95,7 +72,7 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.data_category",
                     "value": [
-                        dataCategory
+                        "Copy Number Variation"
                     ]
                 }
             },
@@ -104,7 +81,7 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.data_type",
                     "value": [
-                        gdcDataType
+                        "Gene Level Copy Number"
                     ]
                 }
             },
@@ -119,7 +96,6 @@ def getAllSamples(projectName):
             }
         ]
     }
-
     params = {
         "filters": json.dumps(allSamplesFilter),
         "fields": "submitter_sample_ids",
@@ -128,20 +104,21 @@ def getAllSamples(projectName):
     }
     response = requests.post(casesEndpt, json=params, headers={"Content-Type": "application/json"})
     responseJson = unpeelJson(response.json())
-
     allSamples = []
     for caseDict in responseJson:
         for sample in caseDict["submitter_sample_ids"]:
             allSamples.append(sample)
+    
     return allSamples
 
 
 def unpeelJson(jsonObj):
     jsonObj = jsonObj.get("data").get("hits")
+    
     return jsonObj
 
 
-def dataTypeSamples(samples):
+def dataTypeSamples(projectName, samples, workflowType, experimentalStrategy):
     filesEndpt = "https://api.gdc.cancer.gov/files"
     dataTypeFilter = {
         "op": "and",
@@ -168,7 +145,7 @@ def dataTypeSamples(samples):
                 "op": "in",
                 "content": {
                     "field": "data_category",
-                    "value": dataCategory
+                    "value": "Copy Number Variation"
                 }
             },
             {
@@ -176,7 +153,7 @@ def dataTypeSamples(samples):
                 "content": {
                     "field": "data_type",
                     "value": [
-                        gdcDataType
+                        "Gene Level Copy Number"
                     ]
                 }
             },
@@ -225,8 +202,8 @@ def dataTypeSamples(samples):
                 else:
                     dataTypeDict[sampleName] = {}
                     dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
+    
     return dataTypeDict
-
 
 
 def xenaDataframe(xenaFile):
@@ -234,15 +211,17 @@ def xenaDataframe(xenaFile):
     for column in xenaDF:
         if pandas.api.types.is_numeric_dtype(xenaDF[column]):
             xenaDF[column] = xenaDF[column].apply(round_ForNans)
+    
     return xenaDF
 
 
-def compare():
+def compare(logger, sampleDict, xenaDF):
     samplesCorrect = 0
-    sampleNum = 0
+    failed = []
+    sampleNum = 1
+    total = len(sampleDict)
     for sample in sampleDict:
         fileCount = 0
-        print(f"Sample: {sample}\nSample Number: {sampleNum}\n\n")
         for fileID in sampleDict[sample]:
             fileName = sampleDict[sample][fileID]
             sampleFile = "gdcFiles/" + fileID + "/" + fileName
@@ -259,10 +238,6 @@ def compare():
                 sampleDataDF["nonNanCount"] += tempDF["nonNanCount"]
                 sampleDataDF["copy_number"] += tempDF["copy_number"]
             fileCount += 1
-
-
-
-
         cellsCorrect = 0
         sampleDataDF["copy_number"] = sampleDataDF.apply(lambda x: x["copy_number"]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
         sampleDataDF["copy_number"] = sampleDataDF["copy_number"].apply(round_ForNans)
@@ -271,36 +246,52 @@ def compare():
         xenaColumn.reset_index(inplace=True, drop=True)
         sampleColumn.reset_index(inplace=True, drop=True)
         if (sampleColumn.equals(xenaColumn)):
-            print("success")
+            status = "[{:d}/{:d}] Sample: {} - Passed"
+            logger.info(status.format(sampleNum, total, sample))
             samplesCorrect += 1
+        else:
+            status = "[{:d}/{:d}] Sample: {} - Failed"
+            logger.info(status.format(sampleNum, total, sample))
+            failed.append('{} ({})'.format(sample, sampleNum))
         sampleNum += 1
-    return samplesCorrect == len(sampleDict)
+    
+    return failed
 
 
-xenaSamples = getXenaSamples(xenaFilePath)
-
-
-allSamples = getAllSamples(projectName)
-sampleDict = dataTypeSamples(allSamples)
-xenaDF = xenaDataframe(xenaFilePath)
-
-# print(len(sampleDict), len(xenaSamples))
-#
-# print(f"Retrieved Samples:\n{sorted(sampleDict)}")
-# print(f"Xena Samples:\n{sorted(xenaSamples)}")
-
-if sorted(sampleDict) != sorted(xenaSamples):
-    print("Samples retrieved from GDC and not in Xena Dataframe")
-    print([x for x in sampleDict if x not in xenaSamples])
-    print("Samples retrieved from Xena Dataframe and not in GDC retrieved samples")
-    print([x for x in xenaSamples if x not in sampleDict])
-    exit(1)
-
-fileIDS = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
-downloadFiles(fileIDS)
-
-if compare():
-    print("Passed")
-else:
-    print("Fail")
-
+def main(projectName, xenaFilePath, dataType):
+    logger.info("Testing [{}] data for [{}].".format(dataType, projectName))
+    workflowDict = {
+        "gene-level_absolute": "ABSOLUTE LiftOver",
+        "gene-level_ascat2": "ASCAT2",
+        "gene-level_ascat3": "ASCAT3",
+        "gene-level_ascat-ngs": "AscatNGS"    
+    } 
+    experimentalStrategyDict = {
+        "ABSOLUTE LiftOver": "Genotyping Array",
+        "ASCAT2": "Genotyping Array",
+        "ASCAT3": "Genotyping Array",
+        "AscatNGS": "WGS"
+    }
+    workflowType = workflowDict[dataType]
+    experimentalStrategy = experimentalStrategyDict[workflowType]
+    xenaSamples = getXenaSamples(xenaFilePath)
+    allSamples = getAllSamples(projectName, workflowType, experimentalStrategy)
+    sampleDict = dataTypeSamples(projectName, allSamples, workflowType, experimentalStrategy)
+    xenaDF = xenaDataframe(xenaFilePath)
+    if sorted(sampleDict) != sorted(xenaSamples):
+        logger.info("ERROR: Samples retrieved from the GDC do not match those found in Xena matrix.")
+        logger.info(f"Number of samples from the GDC: {len(sampleDict)}")
+        logger.info(f"Number of samples in Xena matrix: {len(xenaSamples)}")
+        logger.info(f"Samples from GDC and not in Xena: {[x for x in sampleDict if x not in xenaSamples]}")
+        logger.info(f"Samples from Xena and not in GDC: {[x for x in xenaSamples if x not in sampleDict]}")
+        exit(1)
+    fileIDS = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
+    downloadFiles(fileIDS)
+    result = compare(logger, sampleDict, xenaDF)
+    if len(result) == 0:
+        logger.info("[{}] test passed for [{}].".format(dataType, projectName))
+        return 'PASSED'
+    else:
+        logger.info("[{}] test failed for [{}].".format(dataType, projectName))
+        logger.info("Samples failed: {}".format(result))
+        return 'FAILED'

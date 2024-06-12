@@ -1,4 +1,5 @@
 import requests
+import logging
 import json
 import tarfile
 import subprocess
@@ -9,70 +10,8 @@ import os
 from math import log10, floor
 
 
-if ( len(sys.argv) != 3 ):
-    print("Usage:\npython3 mirnaValidation.py [Project Name] [Xena File Path]")
-    exit(1)
+logger = logging.getLogger(__name__)
 
-projectName = sys.argv[1]
-# projectName = "CGCI-HTMCP-CC"
-xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-CC/Xena_Matrices/CGCI-HTMCP-CC.mirna.tsv"
-
-workflowType = "BCGSC miRNA Profiling"
-dataCategory = "transcriptome profiling"
-gdcDataType = "miRNA Expression Quantification"
-experimentalStrategy = "miRNA-Seq"
-
-allSamplesFilter = {
-        "op": "and",
-        "content": [
-            {
-                "op": "in",
-                "content": {
-                    "field": "cases.project.project_id",
-                    "value": [
-                        projectName
-                    ]
-                }
-            },
-            {
-                "op": "in",
-                "content": {
-                    "field": "files.analysis.workflow_type",
-                    "value": [
-                        workflowType
-                    ]
-                }
-            },
-            {
-                "op": "in",
-                "content": {
-                    "field": "files.data_category",
-                    "value": [
-                        dataCategory
-                    ]
-                }
-            },
-            {
-                "op": "in",
-                "content": {
-                    "field": "files.data_type",
-                    "value": [
-                        gdcDataType
-                    ]
-                }
-            },
-            {
-                "op": "in",
-                "content": {
-                    "field": "files.experimental_strategy",
-                    "value": [
-                        experimentalStrategy
-                    ]
-                }
-            }
-        ]
-    }
 
 def round_ForNans(x):
     if( pandas.notna(x) ):
@@ -108,7 +47,9 @@ def round_(x, n):
 
     e = floor(log10(abs(x)) - n + 1)  # exponent, 10 ** e
     shifted_dp = x / (10 ** e)  # decimal place shifted n d.p.
+    
     return round(shifted_dp) * (10 ** e)  # round and revert
+
 
 '''
 Given a list of files a post request will be made to the GDC to download all the files
@@ -119,13 +60,12 @@ def downloadFiles(fileList):
     }
     with open("payload.txt", "w") as payloadFile:
         payloadFile.write(str(jsonPayload).replace("\'", "\""))
-
-    print("Downloading from GDC: ")
+    logger.info("Downloading from GDC: ")
     subprocess.run(["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
                      "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
-
     os.system("mkdir -p gdcFiles")
     os.system("tar -xzf gdcFiles.tar.gz -C gdcFiles")
+
 
 '''
 Given a xena matrix file all samples will be extracted in order to compare
@@ -137,14 +77,62 @@ def getXenaSamples(xenaFile):  # get all samples from the xena matrix
         sampleList = header.split("\t")  # split tsv file into list
         sampleList.pop(0)  # remove unnecessary label
         sampleList = [sample.strip() for sample in sampleList]  # make sure there isn't extra whitespace
+    
     return sampleList
 
-'''
 
-'''
-def getAllSamples():
+def getAllSamples(projectName):
     casesEndpt = "https://api.gdc.cancer.gov/cases"
-
+    allSamplesFilter = {
+        "op": "and",
+        "content": [
+            {
+                "op": "in",
+                "content": {
+                    "field": "cases.project.project_id",
+                    "value": [
+                        projectName
+                    ]
+                }
+            },
+            {
+                "op": "in",
+                "content": {
+                    "field": "files.analysis.workflow_type",
+                    "value": [
+                        "BCGSC miRNA Profiling"
+                    ]
+                }
+            },
+            {
+                "op": "in",
+                "content": {
+                    "field": "files.data_category",
+                    "value": [
+                        "transcriptome profiling"
+                    ]
+                }
+            },
+            {
+                "op": "in",
+                "content": {
+                    "field": "files.data_type",
+                    "value": [
+                        "miRNA Expression Quantification"
+                    ]
+                }
+            },
+            {
+                "op": "in",
+                "content": {
+                    "field": "files.experimental_strategy",
+                    "value": [
+                        "miRNA-Seq"
+                    ]
+                }
+            }
+        ]
+    }
     params = {
         "filters": json.dumps(allSamplesFilter),
         "fields": "submitter_sample_ids",
@@ -153,20 +141,21 @@ def getAllSamples():
     }
     response = requests.post(casesEndpt, json=params, headers={"Content-Type": "application/json"})
     responseJson = unpeelJson(response.json())
-
     allSamples = []
     for caseDict in responseJson:
         for sample in caseDict["submitter_sample_ids"]:
             allSamples.append(sample)
+    
     return allSamples
 
 
 def unpeelJson(jsonObj):
     jsonObj = jsonObj.get("data").get("hits")
+    
     return jsonObj
 
 
-def miRNASamples(samples):
+def miRNASamples(projectName, samples):
     mirnaSamplesFilter = {
         "op": "and",
         "content": [
@@ -184,7 +173,7 @@ def miRNASamples(samples):
                 "content": {
                     "field": "analysis.workflow_type",
                     "value": [
-                        workflowType
+                        "BCGSC miRNA Profiling"
                     ]
                 }
             },
@@ -192,7 +181,7 @@ def miRNASamples(samples):
                 "op": "in",
                 "content": {
                     "field": "data_category",
-                    "value": dataCategory
+                    "value": "transcriptome profiling"
                 }
             },
             {
@@ -200,7 +189,7 @@ def miRNASamples(samples):
                 "content": {
                     "field": "data_type",
                     "value": [
-                        gdcDataType
+                        "miRNA Expression Quantification"
                     ]
                 }
             },
@@ -209,7 +198,7 @@ def miRNASamples(samples):
                 "content": {
                     "field": "experimental_strategy",
                     "value": [
-                        experimentalStrategy
+                        "miRNA-Seq"
                     ]
                 }
             },
@@ -240,6 +229,7 @@ def miRNASamples(samples):
             else:
                 mirnaSamplesDict[sampleName] = {}
                 mirnaSamplesDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
+    
     return mirnaSamplesDict
 
 
@@ -249,13 +239,14 @@ def xenaDataframe(xenaFile):
         xenaDF[column] = xenaDF[column].apply(round_ForNans)
     return xenaDF
 
-def compare():
+def compare(mirnaSamplesDict, xenaDF):
     samplesCorrect = 0
-    sampleNum = 0
+    failed = []
+    sampleNum = 1
     mirnaDataTitle = "reads_per_million_miRNA_mapped"
+    total = len(mirnaSamplesDict)
     for sample in mirnaSamplesDict:
         fileCount = 0
-        print(f"Sample: {sample}\nSample Number: {sampleNum}\n\n")
         for fileID in mirnaSamplesDict[sample]:
             fileName = mirnaSamplesDict[sample][fileID]
             sampleFile = "gdcFiles/" + fileID + "/" + fileName
@@ -278,46 +269,45 @@ def compare():
         sampleDataDF[mirnaDataTitle] = sampleDataDF.apply(lambda x: x[mirnaDataTitle]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
         sampleDataDF[mirnaDataTitle] = numpy.log2(sampleDataDF[mirnaDataTitle] + 1)
         sampleDataDF[mirnaDataTitle] = sampleDataDF[mirnaDataTitle].apply(round_ForNans)
-
-
         cellsCorrect = 0
         for row in range(len(sampleDataDF.index)):
             xenaDataCell = xenaDF.iloc[row][sample]
             sampleDataCell = sampleDataDF.iloc[row][mirnaDataTitle]
             if (xenaDataCell == sampleDataCell) or (pandas.isna(xenaDataCell) and pandas.isna(sampleDataCell)):
+                status = "[{:d}/{:d}] Sample: {}, miRNA_ID: {} - Passed"
+                logger.info(status.format(sampleNum, total, sample, sampleDataDF.iloc[row]['miRNA_ID']))
                 cellsCorrect += 1
             else:
-                print(f"wrong comparison, Sample {sample}, index {row}")
+                status = "[{:d}/{:d}] Sample: {} - Failed"
+                logger.info(status.format(sampleNum, total, sample))
+                failed.append('{} ({}): Row {}'.format(sample, sampleNum, row))
         if cellsCorrect == len(sampleDataDF.index):
             samplesCorrect += 1
         sampleNum += 1
-    return samplesCorrect == len(mirnaSamplesDict)
+    
+    return failed
 
 
-xenaSamples = getXenaSamples(xenaFilePath)
-
-allSamples = getAllSamples()
-mirnaSamplesDict = miRNASamples(allSamples)
-xenaDF = xenaDataframe(xenaFilePath)
-
-
-if sorted(mirnaSamplesDict) != sorted(xenaSamples):
-    print("ERROR:\nSamples retrieved from GDC do not match those found in xena samples")
-    print(f"Length of allSamples: {len(allSamples)}")
-    print(f"Length of xena samples: {len(xenaSamples)}")
-    print(f"Length of mirna samples: {len(mirnaSamplesDict)}")
-
-    print(f"Samples in xena samples and not in mirnaSamplesDict:\n{[x for x in xenaSamples if x not in mirnaSamplesDict]}")
-    print(f"Samples in mirnaSamplesDict and not in xenaSamples:\n{[x for x in mirnaSamplesDict if x not in xenaSamples]}")
-
-    exit(1)
-
-fileIDS = [fileID for sample in mirnaSamplesDict for fileID in mirnaSamplesDict[sample]]
-downloadFiles(fileIDS)
-
-if compare():
-    print("Passed")
-else:
-    print("Fail")
-
-
+def main(projectName, xenaFilePath, dataType):
+    logger.info("Testing [{}] data for [{}].".format(dataType, projectName))
+    xenaSamples = getXenaSamples(xenaFilePath)
+    allSamples = getAllSamples(projectName)
+    mirnaSamplesDict = miRNASamples(projectName, allSamples)
+    xenaDF = xenaDataframe(xenaFilePath)
+    if sorted(mirnaSamplesDict) != sorted(xenaSamples):
+        logger.info("ERROR: Samples retrieved from the GDC do not match those found in Xena matrix.")
+        logger.info(f"Number of samples from the GDC: {len(mirnaSamplesDict)}")
+        logger.info(f"Number of samples in Xena matrix: {len(xenaSamples)}")
+        logger.info(f"Samples from GDC and not in Xena: {[x for x in mirnaSamplesDict if x not in xenaSamples]}")
+        logger.info(f"Samples from Xena and not in GDC: {[x for x in xenaSamples if x not in mirnaSamplesDict]}")
+        exit(1)
+    fileIDS = [fileID for sample in mirnaSamplesDict for fileID in mirnaSamplesDict[sample]]
+    downloadFiles(fileIDS)
+    result = compare(mirnaSamplesDict, xenaDF)
+    if len(result) == 0:
+        logger.info("[{}] test passed for [{}].".format(dataType, projectName))
+        return 'PASSED'
+    else:
+        logger.info("[{}] test failed for [{}].".format(dataType, projectName))
+        logger.info("Samples failed: {}".format(result))
+        return 'FAILED'

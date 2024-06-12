@@ -1,5 +1,6 @@
 import os
 import sys
+import logging
 import requests
 import json
 import subprocess
@@ -7,28 +8,8 @@ import pandas
 import numpy
 import difflib
 
-if (len(sys.argv) != 4):
-    print("Usage:\npython3 somaticMutationValidation.py [Project Name] [Xena File Path] [Experimental Strategy]")
-    print("Valid Experimental Strategies:\n['WXS', 'Targeted']")
-    exit(1)
 
-projectName = sys.argv[1]
-# projectName = "CGCI-HTMCP-CC"
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-CC/Xena_Matrices/CGCI-HTMCP-CC.somaticmutation_snv.tsv"
-xenaFilePath = sys.argv[2]
-experimentalStrategy = sys.argv[3]
-
-experimentalStrategyDict = {"WXS": "WXS",
-                            "Targeted": "Targeted Sequencing"}
-
-if experimentalStrategy not in experimentalStrategyDict:
-    print("Error: Invalid Experimental Strategy")
-    print("Valid Experimental Strategies:\n['WXS', 'Targeted']")
-
-dataCategory = "simple nucleotide variation"
-gdcDataType = "Masked Somatic Mutation"
-experimentalStrategy = experimentalStrategyDict[experimentalStrategy]
-workflowType = "Aliquot Ensemble Somatic Variant Merging and Masking"
+logger = logging.getLogger(__name__)
 
 
 def round_ForNans(x):
@@ -39,6 +20,7 @@ def round_ForNans(x):
 
 
 def vaf(t_alt_count, t_depth):
+    
     return t_alt_count / t_depth
 
 
@@ -48,12 +30,10 @@ def downloadFiles(fileList):
     }
     with open("payload.txt", "w") as payloadFile:
         payloadFile.write(str(jsonPayload).replace("\'", "\""))
-
-    print("Downloading from GDC: ")
+    logger.info("Downloading from GDC: ")
     subprocess.run(
         ["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
          "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
-
     os.system("mkdir -p gdcFiles")
     os.system("tar -xzf gdcFiles.tar.gz -C gdcFiles")
 
@@ -61,10 +41,11 @@ def downloadFiles(fileList):
 def getXenaSamples(xenaFile):  # get all samples from the xena matrix
     xenaMatrix = pandas.read_csv(xenaFile, sep="\t")
     sampleList = list(xenaMatrix["sample"].unique())
+    
     return sampleList
 
 
-def getAllSamples(projectName):
+def getAllSamples(projectName, experimentalStrategy):
     casesEndpt = "https://api.gdc.cancer.gov/cases"
     allSamplesFilter = {
         "op": "and",
@@ -83,7 +64,7 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.analysis.workflow_type",
                     "value": [
-                        workflowType
+                        "Aliquot Ensemble Somatic Variant Merging and Masking"
                     ]
                 }
             },
@@ -92,7 +73,7 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.data_category",
                     "value": [
-                        dataCategory
+                        "simple nucleotide variation"
                     ]
                 }
             },
@@ -101,7 +82,7 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.data_type",
                     "value": [
-                        gdcDataType
+                        "Masked Somatic Mutation"
                     ]
                 }
             },
@@ -125,7 +106,6 @@ def getAllSamples(projectName):
             }
         ]
     }
-
     params = {
         "filters": json.dumps(allSamplesFilter),
         "fields": "submitter_sample_ids",
@@ -134,20 +114,21 @@ def getAllSamples(projectName):
     }
     response = requests.post(casesEndpt, json=params, headers={"Content-Type": "application/json"})
     responseJson = unpeelJson(response.json())
-
     allSamples = []
     for caseDict in responseJson:
         for sample in caseDict["submitter_sample_ids"]:
             allSamples.append(sample)
+    
     return allSamples
 
 
 def unpeelJson(jsonObj):
     jsonObj = jsonObj.get("data").get("hits")
+    
     return jsonObj
 
 
-def dataTypeSamples(samples):
+def dataTypeSamples(projectName, experimentalStrategy, samples):
     filesEndpt = "https://api.gdc.cancer.gov/files"
     # MAKE IT SO THAT FILTER GETS DATA TYPE INSERTED
     dataTypeFilter = {
@@ -167,7 +148,7 @@ def dataTypeSamples(samples):
                 "content": {
                     "field": "analysis.workflow_type",
                     "value": [
-                        workflowType
+                        "Aliquot Ensemble Somatic Variant Merging and Masking"
                     ]
                 }
             },
@@ -175,7 +156,7 @@ def dataTypeSamples(samples):
                 "op": "in",
                 "content": {
                     "field": "data_category",
-                    "value": dataCategory
+                    "value": "simple nucleotide variation"
                 }
             },
             {
@@ -183,7 +164,7 @@ def dataTypeSamples(samples):
                 "content": {
                     "field": "data_type",
                     "value": [
-                        gdcDataType
+                        "Masked Somatic Mutation"
                     ]
                 }
             },
@@ -241,10 +222,11 @@ def dataTypeSamples(samples):
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t")
     xenaDF["dna_vaf"] = xenaDF["dna_vaf"].apply(round_ForNans)
+    
     return xenaDF
 
 
-def nonEmptySamples():
+def nonEmptySamples(sampleDict):
     nonEmpty = []
     allSampleNames = []
     for sample in sampleDict:
@@ -262,7 +244,7 @@ def nonEmptySamples():
     return nonEmpty, allSampleNames
 
 
-def sampleDataframe():
+def sampleDataframe(sampleNames, sampleDict):
     dataFrame = pandas.DataFrame()
     # Create a dataframe for all the samples retrieved
     for sample in sampleNames:
@@ -280,9 +262,7 @@ def sampleDataframe():
         sampleDataDF.rename(columns={'Tumor_Seq_Allele2': 'alt'}, inplace=True)
         sampleDataDF.rename(columns={'HGVSp_Short': 'Amino_Acid_Change'}, inplace=True)
         sampleDataDF.rename(columns={'Consequence': 'effect'}, inplace=True)
-
         sampleDataDF["dna_vaf"] = sampleDataDF.apply(lambda x: vaf(x.t_alt_count, x.t_depth), axis=1)
-
         sampleDataDF = sampleDataDF.loc[:,
                        ["gene", "chrom", "start", "end", "ref", "alt", "Tumor_Sample_Barcode", "Amino_Acid_Change",
                         "effect",
@@ -293,57 +273,55 @@ def sampleDataframe():
         sampleDataDF.insert(0, "sample", normalSampleName)
         dataFrame = pandas.concat([dataFrame, sampleDataDF])
     dataFrame["dna_vaf"] = dataFrame["dna_vaf"].apply(round_ForNans)
+    
     return dataFrame
 
 
-xenaSamples = getXenaSamples(xenaFilePath)
-
-allSamples = getAllSamples(projectName)
-sampleDict, seenSamples = dataTypeSamples(allSamples)
-xenaDF = xenaDataframe(xenaFilePath)
-
-fileIDS = [sampleDict[x]["file_id"] for x in sampleDict]
-downloadFiles(fileIDS)
-
-validSamples, sampleNames = nonEmptySamples()
-validSamples = list(set(validSamples))
-
-if sorted(validSamples) != sorted(xenaSamples):
-    print("Samples retrieved from GDC and not in Xena Dataframe")
-    print([x for x in seenSamples if x not in xenaSamples])
-    print("Samples retrieved from Xena Dataframe and not in GDC retrieved samples")
-    print([x for x in xenaSamples if x not in seenSamples])
-    exit(1)
-
-# create dataframe for samples
-sampleDf = sampleDataframe()
-xenaDF.sort_values(by=sorted(xenaDF), inplace=True)
-# sort sample dataframe as well
-sampleDf.sort_values(by=sorted(xenaDF), inplace=True)
-
-# then reset index ordering for each one
-xenaDF.reset_index(inplace=True, drop=True)
-sampleDf.reset_index(inplace=True, drop=True)
-
-with open("sampleDF.csv", "w") as sampleFile:
-    sampleDf.to_csv(sampleFile)
-
-with open("xenaDF.csv", "w") as xenaDfFile:
-    xenaDF.to_csv(xenaDfFile)
-
-try:
-    pandas.testing.assert_frame_equal(sampleDf, xenaDF, check_dtype=False)
-    print("Passed")
-except AssertionError:
-    # diff = sampleDf.merge(xenaDF, indicator=True, how='left').loc[lambda x: x['_merge'] != 'both']
-    # for i in range(0, len(sampleDf)):
-    #     xenaRow = xenaDF.iloc[i]
-    #     sampleRow = sampleDf.iloc[i]
-    #     if not(sampleRow.equals(xenaRow)):
-    #         print("err")
-    with open("sampleDF.csv", "r") as sampleFile:
-        with open("xenaDF.csv", "r") as xenaDfFile:
-            # if they are not equal then output diff of both files
-            with open("diff.txt", "w") as diffFile:
-                diffFile.writelines(difflib.unified_diff(sampleFile.readlines(), xenaDfFile.readlines(),
-                                                         fromfile="sampleDF.csv", tofile="xenaDF.csv"))
+def main(projectName, xenaFilePath, dataType):
+    experimentalStrategyDict = {
+        "somaticmutation_wxs": "WXS",
+        "somaticmutation_targeted": "Targeted Sequencing"
+    }
+    experimentalStrategy = experimentalStrategyDict[dataType]
+    xenaSamples = getXenaSamples(xenaFilePath)
+    allSamples = getAllSamples(projectName, experimentalStrategy)
+    sampleDict, seenSamples = dataTypeSamples(projectName, experimentalStrategy, allSamples)
+    xenaDF = xenaDataframe(xenaFilePath)
+    fileIDS = [sampleDict[x]["file_id"] for x in sampleDict]
+    downloadFiles(fileIDS)
+    validSamples, sampleNames = nonEmptySamples(sampleDict)
+    validSamples = list(set(validSamples))
+    if sorted(validSamples) != sorted(xenaSamples):
+        logger.info("ERROR: Samples retrieved from the GDC do not match those found in Xena matrix.")
+        logger.info(f"Number of samples from the GDC: {len(validSamples)}")
+        logger.info(f"Number of samples in Xena matrix: {len(xenaSamples)}")
+        logger.info(f"Samples from GDC and not in Xena: {[x for x in validSamples if x not in xenaSamples]}")
+        logger.info(f"Samples from Xena and not in GDC: {[x for x in xenaSamples if x not in validSamples]}")
+        exit(1)
+    # create dataframe for samples
+    sampleDf = sampleDataframe(sampleNames, sampleDict)
+    xenaDF.sort_values(by=sorted(xenaDF), inplace=True)
+    # sort sample dataframe as well
+    sampleDf.sort_values(by=sorted(xenaDF), inplace=True)
+    # then reset index ordering for each one
+    xenaDF.reset_index(inplace=True, drop=True)
+    sampleDf.reset_index(inplace=True, drop=True)
+    with open("sampleDF.csv", "w") as sampleFile:
+        sampleDf.to_csv(sampleFile)
+    with open("xenaDF.csv", "w") as xenaDfFile:
+        xenaDF.to_csv(xenaDfFile)
+    try:
+        logger.info("Testing in progress ...")
+        pandas.testing.assert_frame_equal(sampleDf, xenaDF, check_dtype=False)
+        logger.info("[{}] test passed for [{}].".format(dataType, projectName))
+        return 'PASSED'
+    except AssertionError:
+        logger.info("[{}] test failed for [{}].".format(dataType, projectName))
+        logger.info("Diff file is being generated with unequal values.")
+        with open("sampleDF.csv", "r") as sampleFile:
+            with open("xenaDF.csv", "r") as xenaDfFile:
+                # if they are not equal then output diff of both files
+                with open("diff.txt", "w") as diffFile:
+                    diffFile.writelines(difflib.unified_diff(sampleFile.readlines(), xenaDfFile.readlines(),
+                                                            fromfile="sampleDF.csv", tofile="xenaDF.csv"))
+        return 'FAILED'
