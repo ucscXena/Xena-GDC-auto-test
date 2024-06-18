@@ -134,6 +134,7 @@ def main():
             else: 
                 result = run_tests(project, data_type)
                 test_results.append([project, data_type, result])
+        data_types = None
     for r in test_results:
         logger.info('{} data for {} has {}.'.format(r[1], r[0], r[2]))
 
