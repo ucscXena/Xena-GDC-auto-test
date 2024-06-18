@@ -94,6 +94,8 @@ def run_tests(project, data_type):
         result = methylation_test.main(project, path, data_type)
     # elif data_type == 'protein':
     # elif data_type == 'survival':
+    # elif data_type == 'allele_cnv_ascat2':
+    # elif data_type == 'allele_cnv_ascat3':
         
     return result
 
@@ -125,12 +127,8 @@ def main():
                 for star_dtype in ['star_counts', 'star_tpm', 'star_fpkm', 'star_fpkm-uq']:
                     result = run_tests(project, star_dtype)
                     test_results.append([project, star_dtype, result])
-            elif data_type == 'clinical':
-                logger.info('Clinical test still in progress of being written.')
-            elif data_type == 'survival':
-                logger.info('Survival test contains bugs to be fixed.')
-            elif data_type == 'protein':
-                logger.info('Protein test still in progress of being written.')
+            elif data_type == 'clinical' or data_type == 'survival' or data_type == 'protein' or data_type =='allele_cnv_ascat2' or data_type == 'allele_cnv_ascat3':
+                logger.info('{} test still in progress of being written or having bugs fixed.'.format(data_type))
             else: 
                 result = run_tests(project, data_type)
                 test_results.append([project, data_type, result])
