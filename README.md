@@ -1,104 +1,183 @@
-# Project Motivation
+# Project Overview
 
-The UCSC Xena [1] browser is an online tool that allows users to analyze and visualize different types of genomic data. This data comes from multiple sources, most importantly the Genomic Data Commons (GDC) [2]. Data from the GDC is imported into UCSC Xena through Xena-GDC-ETL[6].  The GDC has tens of projects, hundreds of datasets, and thousands of samples, all of which take considerable time and effort to import into Xena. The GDC periodically adds and updates its data but only sometimes indicates in its release notes which datasets it has updated. Programmers who run the Xena-GDC-ETL code need to know which datasets need updating and which still need to change. While there is an automated testing suite that checks every data value in the GDC and compares it to Xena, it takes a long time to run for all projects and all datasets. The goal of this project is to provide users of the Xena-GDC-ETL code with information on which project(s) and datatype(s) require updating. This will allow the Xena browser to be updated quickly after the GDC releases data and to monitor the GDC for any dataset changes.  
+UCSC Xena is an online tool that allows users to analyze and visualize genomics data[1]. The website supports various data types from multiple platforms such as the Genomics Data Commons (GDC)[2]. Data types supported by the GDC Xena hub include RNA-seq gene expression, DNA methylation, clinical data, Gene-level mutation, survival, and more. The data from the GDC was last imported into UCSC Xena 4 years ago using the Xena-GDC-ETL code[7]. This means that Xena users lack access to the newer and updated GDC data. The quantity of data that needs to be updated is significant, which makes it impossible to completely test the data manually. This project aims to create a set of automatic testing scripts to efficiently validate the accuracy of each data type imported from the GDC through the Xena-GDC-ETL code[7], both for data from existing projects on the Xena browser such as The Cancer Genome Atlas (TCGA)[5], as well as new projects like CTSP-DLBCL1[6] to the Xena platform. These scripts will complement some manual spot-checking as well as some manual tests which can not be automated. 
 
 ## Background: GDC
 
-The NCI's Genomic Data Commons (GDC) provides the cancer research community with a unified repository and cancer knowledge base that enables data sharing across cancer genomic studies in support of precision medicine. The GDC offers public access to data from important national and international cancer research projects such as The Cancer Genome Atlas (TCGA)[4], Therapeutically Applicable Research to Generate Effective Treatments (TARGET) [3], and others. This data, as well as its metadata, can be retrieved and downloaded using the GDC API’s various endpoints, such as “/cases”, “/files”, “/projects”, etc. These endpoints are used by the Xena-GDC-ETL to import data, transform the data into files compatible with the Xena browser, and transfer it to the Xena hub. The Xena hub is organized into Cohorts, each representing a project contained in the GDC. Individual cohorts also have datasets that correspond to the data types with samples imported from the GDC. 
+The NCI's Genomic Data Commons (GDC) provides the cancer research community with a unified repository and cancer knowledge base that enables data sharing across cancer genomic studies in support of precision medicine. The GDC provides public access to data from important national and international cancer research projects such as TCGA, Therapeutically Applicable Research to Generate Effective Treatments (TARGET) [3], and Genomics Evidence Neoplasia Information Exchange (GENIE)[4]. This data can be retrieved and downloaded using the GDC API’s various endpoints, such as “/cases”, “/files”, “/projects”, etc. These endpoints are used by the Xena-GDC-ETL to import data, transform the data into files that are compatible with Xena, and transfer it to the Xena hub. 
 
-## Background: Xena API
+## Objective
 
-The Xena API [7] is a Python API that can be used to query the Xena hub. Users can use the Xena API to get metadata or data on specific samples, genes, datasets, and cohorts. This project uses the Xena API to query the sample submitter IDs that are contained in specific datasets. This way, they can be compared with those returned by the GDC.
-
-## Overview
-
-The objective of this project is to build a testing suite to independently verify the quantity of data between the data on the Xena data hub and the GDC portal. Specifically it will test 3 things:
+A multitude of researchers use data from the GDC database on the Xena browser, making the accuracy of this data a major priority. The data is too large to be tested entirely by hand, hence it is crucial to automatically test the data from the GDC. This project consists of:
 
 
 
-* Whether any data sets on the GDC are missing from the Xena data hub.
-* The number of samples in each data set on the Xena data hub matches the number of samples for that dataset on the GDC
-* The individual samples contained in each dataset on the Xena data hub match those on the GDC.
-
-All results including missing datasets, data sets with wrong sample numbers, and missing data types are saved to a TSV file. 
+* Understanding the GDC API’s search, retrieval, and download.
+* Develop multiple automatic tests for GDC’s RNA-seq data
+* Develop an automatic test for GDC survival data
+* Develop an automatic test for GDC clinical data
 
 ## Methods
 
-### Testing for datasets missing from the Xena data hub.
+### Testing the RNA-seq gene expression data on CTSP-DLBCL1[6]
 
-The test first requests the relevant metadata of each file in a given project using the GDC API. This metadata includes information such as “data_type”, “workflow_type”, “platform” etc which is then used to match each file to a dataset. Next, a list of all possible datasets is made for each project, noting that some projects may not have a dataset for certain data types. Then individual files from the GDC API are matched to individual datasets. The parameters for matching a file to a dataset are derived from the xena_dataset script in the Xena-GDC-ETL code. Some files may not match any dataset and are saved as missing files with their data type presented as missing. Other files have a data type of  “slide images”, “Biospecimen Supplement”, and other clinical data; they are automatically removed because these data types are not imported to the Xena hub. This way, an accurate number of samples are placed into datasets, and we can remove data sets that don’t have any samples. 
+The first project chosen to import from the GDC using Xena-GDC-ETL was CTSP-DLBCL1. This is due to the project’s small case size of 45 and the fact that it was limited in its types of genomic data to only RNA-seq data. 
 
-Once there is a list of data sets compiled from the GDC API call, it is compared to the list of data sets returned by the Xena API. Data sets missing from the Xena API call are saved to the TSV under the column missing_datasets. 
+I wrote a script that compared the four types of gene expression data (counts, FPKM, FPKM-UQ, and TPM) in the GDC with the .tsv file generated by the Xena-GDC-ETL code. First, my script independently downloads the RNA-seq data using the GDC API. Then it reformats both files into a pandas data frame[8] to compare every value on a cell-by-cell basis. Any inconsistencies in the data are reported to the command line once the script is finished.  Each cell’s value, gene ID, and sample ID are saved into a list that is printed out at the end of the program.
 
-### Comparing the number of samples in the Xena data hub to the GDC.
+In addition to comparing the values cell-by-cell, I also created a test to find the correlation between the different data types of RNA-seq data and ensure that the values are close to one. I wrote a script to run a Pearson correlation[8] between all four RNA-seq data types, resulting in six comparisons. This is done on a sample-by-sample basis, meaning the correlation test only checks one sample, but every gene. However, counts are the number of sequence reads of a gene. Because gene sizes may vary significantly, this means that larger genes will generally have more counts. This is different from FPKM, FPKM-uq, and TPM, which are normalized to one million read counts. This means that these three data types measure the density of read counts, while counts are the total number of read counts. Due to this difference, any correlation test with counts is done on a gene-by-gene basis, meaning that only one gene is measured for every sample. This is done to prevent any variation between genes. All of the values are plotted onto a scatter plot with the axes being data types.
 
-To check if the GDC has updated data for a specific project, the test checks for a change in the sample count in the GDC of a certain data type. This was done by comparing the number of submitter IDs in a data set compiled by a GDC API call and the number of submitter IDs in a dataset in the Xena hub compiled via a Xena API call. 
+### Testing the clinical data
 
-For mutation and copy number segment data, there are two submitter IDs associated with each file, one for the tumor and one for the normal. This is because there are normal mutations and copy number variation across the human population. These are subtracted out of the tumor data to ensure data quality and protect patient privacy. The Xena-GDC-ETL script maps these data files to the tumor submitter ID. To account for this the test checks the “tissue_type” metadata to ensure it only takes data from tumors.
+For the clinical data I was not able to simply download the clinical data from the GDC API to compare to the .tsv file generated by the Xena-GDC-ETL code because the Xena-GDC-ETL code deletes fields that have no data. This is common for the clinical data from the GDC as each project reports different clinical data depending on the cancer type, project stage, and which fields the project was able to collect as part of the project. In light of this, the script I wrote first reads the fields from the .tsv file generated by the Xena-GDC-ETL. These fields are then used to limit the output from the calls to the GDC API clinical endpoint to only these fields. The results from the GDC API are loaded into a pandas data frame. Then, similar to the RNA-seq automated testing, the .tsv file is converted to a pandas data frame to compare each value. If there are multiple samples per case, the sample IDs are saved and run through the program a second time. 
 
-Some projects, such as CPTAC-3 and BEATAML1.0-COHORT, do not use submitter IDs for various reasons. They instead use Case IDs and a truncated submitter ID, respectively. Thus, for these two projects, the comparison is not done with submitter IDs, but with Case IDs and a truncated submitter ID. 
+### Testing the survival data
 
-### Testing for changes in version and redaction of samples in the GDC.
+The GDC API has a specific endpoint for survival data called: “/analysis/survival”, which the Xena-GDC-ETL code uses this endpoint to retrieve survival data. This is a separate endpoint from the "cases" clinical data endpoint. I created a script to retrieve survival data of a specified project using the “/analysis/survival” endpoint, convert it into a data frame, and compare it with the Xena-GDC-ETL generated data frame, similar to the testing script for the RNA-seq data. 
 
-The names of each submitter ID are saved as part of the comparing samples test. When the comparison is conducted, extra submitter IDs are saved to a logging file and organized by project and data set. Submitter IDs that are missing in the Xena hub indicate that the GDC has added more samples to the dataset. Submitter IDs that are missing from the GDC indicate that the GDC has redacted certain samples from a dataset. 
+Further, I created an automated test to verify the internal consistency within the GDC between the survival and "cases" clinical endpoints. It first retrieves the relevant survival fields for a specific project using the GDC API’s “/cases” endpoint. This endpoint returns data on a case-by-case basis, which is then formatted into a data frame. From here it takes the 'vital status' as whether the individual is alive or dead. It then takes the greatest value of the following fields: “days to death”, “days to last follow up”, “days to last known disease status”, “days to recurrence”, and more, as these are all related to the calculation of time to event, whether that is being alive or dead. Finally, the .tsv file output by the Xena-GDC-ETL code is converted to a data frame as well, so that every cell can be compared. While the first test was conducted on the CTSP-DLBCL1 project, we also conducted multiple tests on TCGA-BRCA and TCGA-UCEC.
 
-The number of submitter IDs missing or redacted is printed on the screen. The test also saves submitter IDs that have been removed/updated to a logging file, which is saved in the same directory in which the test was run.
+## Results & Outcomes
+
+### RNAseq data automated testing results:
+
+Each automated testing script was run on the CTSP-DLBCL1 project. When testing RNA-seq data of CTSP-DLBCL1 imported by the Xena-GDC-ETL, all data matched, meaning that the import done by the Xena-GDC-ETL code was accurate. 
+
+### Clinical and survival data automated testing results:
+
+There were several inconsistencies between the survival and clinical data. When using the “/cases” endpoint, several cases that were alive but had follow-up data, were missing from the GDC survival endpoint. These inconsistencies were in the CTSP-DLBCL1 project (an example is CTSP-AD1S), but not in the TCGA-BRCA or TCGA-UCEC projects. Initial analysis of the clinical and survival endpoints leads me to believe that this is due to the fact that the CTSP-DLBCL1 projects submitted follow-up data to the field: ‘days to follow up’, whereas the TCGA project submitted to the field ‘days to last follow up’. Further analysis and follow up are needed to verify this. Despite this internal consistency within the GDC, the Xena-GDC-ETL import worked as expected where, for the project CTSP-DLBCL1, the “/analysis/survival” endpoint leads to the same results as the Xena-GDC-ETL import. 
+
+Another example of different endpoints producing different results can be found in the results of the clinical data automated testing. The automated testing script uses the “/cases” endpoint, while the Xena-GDC-ETL code uses the “/projects” endpoint. Due to this difference, only one diagnosis of a case is retrieved by Xena-GDC-ETL, compared to all diagnoses by the automated testing script.  An example of this is the case, CTSP-AD1S, which has 2 diagnoses, but only one is found in the Xena-GDC-ETL.[jing: detail of the CTSP case that has the inconsistency.]
+
+### Correlation analysis 
 
 
-![alt_text](images/image1.png "image_tooltip")
 
-![alt_text](images/image2.png "image_tooltip")
+![alt_text](image9.png "image_tooltip")
+
+Correlation: 0.9999999999999867
 
 
-### Figure 1: Example results from running the script on the command line
+![alt_text](image11.png "image_tooltip")
 
-Both images display what is printed on the command line when running the script. These images only show the projects TARGET-OS and REBC-THYR, but the code runs through all projects and prints with identical format. 
+Correlation: 0.999999999999983
 
-The command line prints out the results for each project one at a time. At the top, it displays the project ID as well as the number of samples that don’t belong into any data type that the Xena hub has. If that number is not 0, it may be due to an error in the code or a new data type that has never been imported to the Xena hub. In the middle, it prints out the results for each data set. First, the data type, and then the number of 
 
-TARGET-OS is a project that has already been imported to the Xena hub but requires updating. The missing datasets and datasets that need updating are found at the bottom. The specific number of samples in Xena and the GDC for each dataset are shown at the top. 
+![alt_text](image6.png "image_tooltip")
 
-REBC-THYR has not been imported to the Xena hub. However, the script still shows which data sets would need to be imported. 
+Correlation: 0.9880884397613635
 
-## Results
 
-The testing suite has been run on all 83 projects in the GDC with a total runtime of 366 seconds. It has already found many datasets that need updating such as 'somaticmutation_wxs', 'methylation27', 'methylation450', ‘methylation epic’, and 'somaticmutation_targeted'.  Imported projects that were found to need updating include BEATAML1.0-COHORT, CGCI-BLGSP, CGCI-HTMCP-CC, CPTAC-2, CPTAC-3, TARGET-ALL-P3, TARGET-WT, TCGA-COAD, TCGA-DLBC, TCGA-ESCA, TCGA-GBM, TCGA-HNSC, and others.
+![alt_text](image3.png "image_tooltip")
 
-Some projects are also missing entire data sets which include these data sets: somaticmutation_wxs', 'methylation27', 'methylation450', and 'somaticmutation_targeted'. These projects were CGCI-HTMCP-CC, CPTAC-2, CPTAC-3, TARGET-ALL-P3, TARGET-CCSK, TARGET-WT, TCGA-BLCA, TCGA-DLBC, TCGA-ESCA, TCGA-LIHC, TCGA-READ, and TCGA-STAD.
+Correlation: 0.9999999999999917
 
-Other projects are completely controlled and return no results. 
 
-Lastly, some projects have not yet been imported to the Xena hub, so the TSV file displays the datasets that need to be imported in the missing datasets column for those projects. The specifics of which project is missing which dataset can be found in this file:
+![alt_text](image1.png "image_tooltip")
 
-A more detailed look on which submitter IDs are missing from which data set can be found in the logging file created by the script: 
+Correlation: 0.9545050830065851
 
-[Missing Submitter Ids](https://drive.google.com/file/d/1QBvQUb6bK0ijkiNwnSARtMMz000rBX7K/view)
 
-## Usage instructions
+![alt_text](image12.png "image_tooltip")
 
-To run the script on all projects in the GDC, run the file on the command line without any arguments
+Correlation: 0.9587627363186685
 
-Example of running the script:
+### Figure 1: Correlation values between various data types
 
-python3 DetectMissingDatasets.py
+Highly significant positive correlation between various RNA-seq data types was generally expected. Correlation values between TPM, FPKM, and FPKM-UQ were all nearly 1, which is expected as they’re normalized per million reads. When comparing counts, which are not normalized, to other data types, the correlation values were lower, between 0.94 and 0.98. This is still close to 1.
 
-To run the script on an individual project:
+## Usage Instructions
 
-[This file name] [project ID]
+### RNA-seq gene expression automated testing
 
-Example:
+Command line:
 
-python3 DetectMissingDatasets.py TCGA-BRCA
+[This file name] [Xena-GDC-ETL imported .tsv file name] [data type] [debug mode]
+
+Valid data types: [“fpkm”, “fpkm-uq”, “tpm”, “star_counts”]
+
+Valid debug modes: [“True”, “False”]
+
+Example: 
+
+python3 XenaGeneExpressionMatrixValidation.py /Users/Downloads/CTSP-DLBCL1.star_tpm.tsv tpm False
 
 Example results: 
 
 
-![alt_text](images/image3.png "image_tooltip")
-
-![alt_text](images/image4.png "image_tooltip")
+![alt_text](image10.png "image_tooltip")
 
 
-## References
+### RNA-seq gene expression correlation testing
+
+Command line: [This file name] [Xena-GDC-ETL imported .tsv file name(data type 1)] [file name(data type 2)] [file name(data type 3)] [file name(data type 4)]
+
+Example: 
+
+python3 RNAseqPCC.py 
+
+/Users/Downloads//CTSP-DLBCL1.star_tpm.tsv /Users/Downloads/CTSP-DLBCL1.star_fpkm-uq.tsv /Users/Downloads/CTSP-DLBCL1.star_fpkm.tsv /Users/Downloads/CTSP-DLBCL1.star_counts.tsv
+
+Example results: 
+
+
+![alt_text](image5.png "image_tooltip")
+
+
+
+
+![alt_text](image4.png "image_tooltip")
+
+
+### Survival Automated Testing (/cases endpoint)
+
+Command line: 
+
+[This file name] [Xena-GDC-ETL imported .tsv file] [project id]
+
+Example:
+
+python3 XenaSurvivalMatrixValidation.py /Users/Downloads/CTSP-DLBCL1.survival.tsv CTSP-DLBCL1
+
+Example results: 
+
+
+![alt_text](image8.png "image_tooltip")
+
+
+### Survival Automated Testing(/analysis/survival endpoint)
+
+Command line:
+
+[This file name] [Xena-GDC-ETL imported .tsv file] [project id]
+
+Example:
+
+python3 XenaSurvivalAnalysisEndptValidation.py /Users/Downloads/CTSP-DLBCL1.survival.tsv CTSP-DLBCL1
+
+Example results: 
+
+
+![alt_text](image7.png "image_tooltip")
+
+
+### Clinical Automated Testing
+
+Command line:
+
+[This file name] [Xena-GDC-ETL imported .tsv file]
+
+Example: 
+
+python3 XenaClinicalDataValidation.py /Users/Downloads/CTSP-DLBCL1.clinical.tsv
+
+Example results: 
+
+
+![alt_text](image2.png "image_tooltip")
+
+
+## Reference
 
 [1]Goldman, M.J., Craft, B., Hastie, M. et al. Visualizing and interpreting cancer genomics data via the Xena platform. Nat Biotechnol (2020). https://doi.org/10.1038/s41587-020-0546-8
 
@@ -106,10 +185,12 @@ Example results:
 
 [3]Ma X, Edmonson M, Yergeau D, Muzny DM, Hampton OA, Rusch M, Song G, Easton J, Harvey RC, Wheeler DA, Ma J, Doddapaneni H, Vadodaria B, Wu G, Nagahawatte P, Carroll WL, Chen IM, Gastier-Foster JM, Relling MV, Smith MA, Devidas M, Guidry Auvil JM, Downing JR, Loh ML, Willman CL, Gerhard DS, Mullighan CG, Hunger SP, Zhang J. Rise and fall of subclones from diagnosis to relapse in pediatric B-acute lymphoblastic leukaemia. Nat Commun. 2015 Mar 19;6:6604. doi: 10.1038/ncomms7604. PMID: 25790293; PMCID: PMC4377644.
 
-[4]National Cancer Institute, 2023 The Cancer Genome Atlas Program (TCGA). www.cancer.gov/ccg/research/genome-sequencing/tcga Accessed 24 June 2024.
+[4]Micheel CM, Sweeney SM, LeNoue-Newton ML, André F, Bedard PL, Guinney J, Meijer GA, Rollins BJ, Sawyers CL, Schultz N, Shaw KRM, Velculescu VE, Levy MA; AACR Project GENIE Consortium. American Association for Cancer Research Project Genomics Evidence Neoplasia Information Exchange: From Inception to First Data Release and Beyond-Lessons Learned and Member Institutions' Perspectives. JCO Clin Cancer Inform. 2018 Dec;2:1-14. doi: 10.1200/CCI.17.00083. PMID: 30652542; PMCID: PMC6873906.
 
-[5]Schmitz R, Wright GW, Huang DW, Johnson CA, Phelan JD, Wang JQ, Roulland S, Kasbekar M, Young RM, Shaffer AL, Hodson DJ, Xiao W, Yu X, Yang Y, Zhao H, Xu W, Liu X, Zhou B, Du W, Chan WC, Jaffe ES, Gascoyne RD, Connors JM, Campo E, Lopez-Guillermo A, Rosenwald A, Ott G, Delabie J, Rimsza LM, Tay Kuang Wei K, Zelenetz AD, Leonard JP, Bartlett NL, Tran B, Shetty J, Zhao Y, Soppet DR, Pittaluga S, Wilson WH, Staudt LM. Genetics and Pathogenesis of Diffuse Large B-Cell Lymphoma. N Engl J Med. 2018 Apr 12;378(15):1396-1407. doi: 10.1056/NEJMoa1801445. PMID: 29641966; PMCID: PMC6010183.
+[5]National Cancer Institute, 2023 The Cancer Genome Atlas Program (TCGA). www.cancer.gov/ccg/research/genome-sequencing/tcga Accessed 19 June 2023.
 
-[6] Xena-GDC-ETL, https://github.com/ucscXena/xena-GDC-ETL Accessed 24 June 2024.
+[6]Schmitz R, Wright GW, Huang DW, Johnson CA, Phelan JD, Wang JQ, Roulland S, Kasbekar M, Young RM, Shaffer AL, Hodson DJ, Xiao W, Yu X, Yang Y, Zhao H, Xu W, Liu X, Zhou B, Du W, Chan WC, Jaffe ES, Gascoyne RD, Connors JM, Campo E, Lopez-Guillermo A, Rosenwald A, Ott G, Delabie J, Rimsza LM, Tay Kuang Wei K, Zelenetz AD, Leonard JP, Bartlett NL, Tran B, Shetty J, Zhao Y, Soppet DR, Pittaluga S, Wilson WH, Staudt LM. Genetics and Pathogenesis of Diffuse Large B-Cell Lymphoma. N Engl J Med. 2018 Apr 12;378(15):1396-1407. doi: 10.1056/NEJMoa1801445. PMID: 29641966; PMCID: PMC6010183.
 
-[7] Xena API, [https://github.com/ucscXena/xenaPython](https://github.com/ucscXena/xenaPython) Accessed 26 June 2024.
+[7] Xena-GDC-ETL, [https://github.com/ucscXena/xena-GDC-ETL](https://github.com/ucscXena/xena-GDC-ETL) Accessed 11 August 2023.
+
+[8] pandas - Python Data Analysis Library. (n.d.), [https://pandas.pydata.org/](https://pandas.pydata.org/) Accessed 14 August 2023.
