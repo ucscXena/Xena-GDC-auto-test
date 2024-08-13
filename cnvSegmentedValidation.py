@@ -1,5 +1,6 @@
 import os
 import sys
+import logging
 
 import pandas as pd
 import difflib
@@ -11,36 +12,9 @@ import pandas
 import numpy
 from math import floor, log10
 
-if ( len(sys.argv) != 4 ):
-    print("Usage:\npython3 cnvSegmentedValidation.py [Project Name] [Xena File Path] [Workflow Type]")
-    print("Valid Workflow Types : ['AscatNGS', 'DNAcopy']")
-    exit(1)
 
-projectName = sys.argv[1]
-# projectName = "HCMI-CMDC"
-xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/HCMI-CMDC/Xena_Matrices/HCMI-CMDC.segment_cnv_ascat-ngs.tsv"
-workflowType = sys.argv[3]
-# workflowType = "AscatNGS"
+logger = logging.getLogger(__name__)
 
-dataCategory = "copy number variation"
-
-
-gdcDataTypeDict = {
-    "DNAcopy": "Masked Copy Number Segment",
-    "AscatNGS": "Copy Number Segment"
-}
-experimentalStrategyDict = {
-    "DNAcopy": "Genotyping Array",
-    "AscatNGS": "WGS"
-}
-
-if workflowType not in experimentalStrategyDict:
-    print("Invalid Workflow Type")
-    print("Valid Workflow Types : ['AscatNGS', 'DNAcopy']")
-    exit(1)
-experimentalStrategy = experimentalStrategyDict[workflowType]
-gdcDataType = gdcDataTypeDict[workflowType]
 
 def round_ForNans(x):
     if( pandas.notna(x) ):
@@ -56,7 +30,7 @@ def downloadFiles(fileList):
     with open("payload.txt", "w") as payloadFile:
         payloadFile.write(str(jsonPayload).replace("\'", "\""))
 
-    print("Downloading from GDC: ")
+    logger.info("Downloading from GDC: ")
     subprocess.run(["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
          "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
 
@@ -67,10 +41,11 @@ def downloadFiles(fileList):
 def getXenaSamples(xenaFile):  # get all samples from the xena matrix
     xenaMatrix = pandas.read_csv(xenaFile, sep="\t")
     sampleList = list(xenaMatrix["sample"].unique())
+    
     return sampleList
 
 
-def getAllSamples(projectName):
+def getAllSamples(projectName, workflowType, gdcDataType, experimentalStrategy):
     casesEndpt = "https://api.gdc.cancer.gov/cases"
     allSamplesFilter = {
         "op": "and",
@@ -98,7 +73,7 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.data_category",
                     "value": [
-                        dataCategory
+                        "copy number variation"
                     ]
                 }
             },
@@ -122,7 +97,6 @@ def getAllSamples(projectName):
             }
         ]
     }
-
     params = {
         "filters": json.dumps(allSamplesFilter),
         "fields": "submitter_sample_ids",
@@ -131,23 +105,22 @@ def getAllSamples(projectName):
     }
     response = requests.post(casesEndpt, json=params, headers={"Content-Type": "application/json"})
     responseJson = unpeelJson(response.json())
-
     allSamples = []
-
     for caseDict in responseJson:
         for sample in caseDict["submitter_sample_ids"]:
             allSamples.append(sample)
+    
     return allSamples
 
 
 def unpeelJson(jsonObj):
     jsonObj = jsonObj.get("data").get("hits")
+    
     return jsonObj
 
 
-def dataTypeSamples(samples):
+def dataTypeSamples(projectName, workflowType, gdcDataType, experimentalStrategy, samples):
     filesEndpt = "https://api.gdc.cancer.gov/files"
-    # MAKE IT SO THAT FILTER GETS DATA TYPE INSERTED
     dataTypeFilter = {
         "op": "and",
         "content": [
@@ -173,7 +146,7 @@ def dataTypeSamples(samples):
                 "op": "in",
                 "content": {
                     "field": "data_category",
-                    "value": dataCategory
+                    "value": "copy number variation"
                 }
             },
             {
@@ -239,11 +212,11 @@ def dataTypeSamples(samples):
 def xenaDataframe(xenaFile):
     xenaDF = pandas.read_csv(xenaFile, sep="\t")
     xenaDF["value"] = xenaDF["value"].apply(round_ForNans)
+    
     return xenaDF
 
 
-
-def sampleDataframe():
+def sampleDataframe(workflowType, sampleDict):
     dataFrame = pandas.DataFrame()
     # Create a dataframe for all the samples retrieved
     for sample in sampleDict:
@@ -263,51 +236,63 @@ def sampleDataframe():
         sampleDataDF.replace(sampleDataDF.iloc[0].iat[0], normalSampleName, inplace=True)
         dataFrame = pandas.concat([dataFrame, sampleDataDF])
     dataFrame["value"] = dataFrame["value"].apply(round_ForNans)
+    
     return dataFrame
 
 
-xenaSamples = getXenaSamples(xenaFilePath)
-
-allSamples = getAllSamples(projectName)
-sampleDict, seenSamples = dataTypeSamples(allSamples)
-xenaDF = xenaDataframe(xenaFilePath)
-
-# print(len(sampleDict), len(xenaSamples))
-#
-# print(f"Retrieved Samples:\n{sorted(sampleDict)}")
-# print(f"Xena Samples:\n{sorted(xenaSamples)}")
-if sorted(seenSamples) != sorted(xenaSamples):
-    print("ERROR:\nSamples retrieved from GDC do not match those found in xena samples")
-    exit(1)
-
-fileIDS = [sampleDict[x]["file_id"] for x in sampleDict]
-downloadFiles(fileIDS)
-# sort data frame
-xenaDF.sort_values(by=sorted(xenaDF), inplace=True)
-
-# create dataframe for samples
-sampleDf = sampleDataframe()
-# sort sample dataframe as well
-sampleDf.sort_values(by=sorted(sampleDf), inplace=True)
-# then reset index ordering for each one
-xenaDF.reset_index(inplace=True, drop=True)
-sampleDf.reset_index(inplace=True, drop=True)
-
-with open("sampleDF.csv", "w") as sampleFile:
-    sampleDf.to_csv(sampleFile)
-
-with open("xenaDF.csv", "w") as xenaDfFile:
-    xenaDF.to_csv(xenaDfFile)
-
-
-if sampleDf.equals(xenaDF):
-    print("Passed")
-else:
-    with open("sampleDF.csv", "r") as sampleFile:
-        with open("xenaDF.csv", "r") as xenaDfFile:
-            # if they are not equal then output diff of both files
-            sys.stdout.writelines(difflib.unified_diff(sampleFile.readlines(), xenaDfFile.readlines(),
-                                                       fromfile="sampleDF.csv", tofile="xenaDF.csv"))
-            exit(1)
-
-
+def main(projectName, xenaFilePath, dataType):
+    logger.info("Testing [{}] data for [{}].".format(dataType, projectName))
+    workflowDict = {
+        "masked_cnv_DNAcopy": "DNAcopy",
+        "segment_cnv_ascat-ngs": "AscatNGS"
+    }
+    gdcDataTypeDict = {
+        "DNAcopy": "Masked Copy Number Segment",
+        "AscatNGS": "Copy Number Segment"
+    }
+    experimentalStrategyDict = {
+        "DNAcopy": "Genotyping Array",
+        "AscatNGS": "WGS"
+    }
+    workflowType = workflowDict[dataType]
+    gdcDataType = gdcDataTypeDict[workflowType]
+    experimentalStrategy = experimentalStrategyDict[workflowType]
+    xenaSamples = getXenaSamples(xenaFilePath)
+    allSamples = getAllSamples(projectName, workflowType, gdcDataType, experimentalStrategy)
+    sampleDict, seenSamples = dataTypeSamples(projectName, workflowType, gdcDataType, experimentalStrategy, allSamples)
+    xenaDF = xenaDataframe(xenaFilePath)
+    if sorted(seenSamples) != sorted(xenaSamples):
+        logger.info("ERROR: Samples retrieved from the GDC do not match those found in Xena matrix.")
+        logger.info(f"Number of samples from the GDC: {len(seenSamples)}")
+        logger.info(f"Number of samples in Xena matrix: {len(xenaSamples)}")
+        logger.info(f"Samples from GDC and not in Xena: {[x for x in seenSamples if x not in xenaSamples]}")
+        logger.info(f"Samples from Xena and not in GDC: {[x for x in xenaSamples if x not in seenSamples]}")
+        exit(1)
+    fileIDS = [sampleDict[x]["file_id"] for x in sampleDict]
+    downloadFiles(fileIDS)
+    # sort data frame
+    xenaDF.sort_values(by=sorted(xenaDF), inplace=True)
+    # create dataframe for samples
+    sampleDf = sampleDataframe(workflowType, sampleDict)
+    # sort sample dataframe as well
+    sampleDf.sort_values(by=sorted(sampleDf), inplace=True)
+    # then reset index ordering for each one
+    xenaDF.reset_index(inplace=True, drop=True)
+    sampleDf.reset_index(inplace=True, drop=True)
+    with open("sampleDF.csv", "w") as sampleFile:
+        sampleDf.to_csv(sampleFile)
+    with open("xenaDF.csv", "w") as xenaDfFile:
+        xenaDF.to_csv(xenaDfFile)
+    if sampleDf.equals(xenaDF):
+        logger.info("Testing in progress ...")
+        logger.info("[{}] test passed for [{}].".format(dataType, projectName))
+        return 'PASSED'
+    else:
+        logger.info("[{}] test failed for [{}].".format(dataType, projectName))
+        logger.info("Diff file is being generated with unequal values.")
+        with open("sampleDF.csv", "r") as sampleFile:
+            with open("xenaDF.csv", "r") as xenaDfFile:
+                # if they are not equal then output diff of both files
+                sys.stdout.writelines(difflib.unified_diff(sampleFile.readlines(), xenaDfFile.readlines(),
+                                                        fromfile="sampleDF.csv", tofile="xenaDF.csv"))                                        
+        return 'FAILED'

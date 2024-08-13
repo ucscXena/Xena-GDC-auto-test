@@ -1,5 +1,6 @@
 import os
 import sys
+import logging
 import requests
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -9,33 +10,8 @@ import pandas
 import numpy
 from math import floor, log10
 
-if (len(sys.argv) != 4):
-    print("Usage:\npython3 methylationValidation.py [Project Name] [Xena File Path] [methylation array generation]\n"
-          "Valid Generations: [methylation_epic, methylation_27, methylation_450, methylation_epicv2]")
-    exit(1)
 
-projectName = sys.argv[1]
-# projectName = "TCGA-ACC"
-xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/TCGA-ACC/Xena_Matrices/TCGA-ACC.methylation450.tsv"
-# This will be different depending on user input
-platform = sys.argv[3]
-# platform = "methylation_450"
-platformDict = {"methylation_epic": "illumina methylation epic",
-                "methylation_27": "illumina human methylation 27",
-                "methylation_450": "illumina human methylation 450",
-                "methylation_epicv2": "illumina methylation epic v2"}
-
-if platform not in platformDict:
-    print("Invalid methylation array generation\nValid Generations: [methylation_epic, methylation_27, methylation_450, methylation_epicv2]")
-    exit(1)
-
-platform = platformDict[platform]
-
-dataCategory = "dna methylation"
-gdcDataType = "Methylation Beta Value"
-experimentalStrategy = "Methylation Array"
-workflowType = "SeSAMe Methylation Beta Estimation"
+logger = logging.getLogger(__name__)
 
 
 # From https://github.com/corriander/python-sigfig/blob/dev/sigfig/sigfig.py
@@ -66,6 +42,7 @@ def round_(x, n):
 
     e = floor(log10(abs(x)) - n + 1)  # exponent, 10 ** e
     shifted_dp = x / (10 ** e)  # decimal place shifted n d.p.
+    
     return round(shifted_dp) * (10 ** e)  # round and revert
 
 
@@ -73,6 +50,7 @@ def custom_round(chunk):
     for col in chunk:
         chunk[col] = chunk[col].apply(
             lambda x: numpy.format_float_scientific(x, precision=8) if pandas.notna(x) else numpy.nan)
+    
     return chunk
 
 
@@ -89,12 +67,10 @@ def downloadFiles(fileList):
     }
     with open("payload.txt", "w") as payloadFile:
         payloadFile.write(str(jsonPayload).replace("\'", "\""))
-
-    print("Downloading from GDC: ")
+    logger.info("Downloading from GDC: ")
     subprocess.run(
         ["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
          "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
-
     os.system("mkdir -p gdcFiles")
     os.system("tar -xzf gdcFiles.tar.gz -C gdcFiles")
 
@@ -105,10 +81,11 @@ def getXenaSamples(xenaFile):  # get all samples from the xena matrix
         sampleList = header.split("\t")  # split tsv file into list
         sampleList.pop(0)  # remove unnecessary label
         sampleList = [sample.strip() for sample in sampleList]  # make sure there isn't extra whitespace
+    
     return sampleList
 
 
-def getAllSamples(projectName):
+def getAllSamples(projectName, platform):
     casesEndpt = "https://api.gdc.cancer.gov/cases"
     allSamplesFilter = {
         "op": "and",
@@ -127,7 +104,7 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.analysis.workflow_type",
                     "value": [
-                        workflowType
+                        "SeSAMe Methylation Beta Estimation"
                     ]
                 }
             },
@@ -136,7 +113,7 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.data_category",
                     "value": [
-                        dataCategory
+                        "dna methylation"
                     ]
                 }
             },
@@ -145,7 +122,7 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.data_type",
                     "value": [
-                        gdcDataType
+                        "Methylation Beta Value"
                     ]
                 }
             },
@@ -154,7 +131,7 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.experimental_strategy",
                     "value": [
-                        experimentalStrategy
+                        "Methylation Array"
                     ]
                 }
             },
@@ -169,7 +146,6 @@ def getAllSamples(projectName):
             }
         ]
     }
-
     params = {
         "filters": json.dumps(allSamplesFilter),
         "fields": "submitter_sample_ids",
@@ -178,20 +154,21 @@ def getAllSamples(projectName):
     }
     response = requests.post(casesEndpt, json=params, headers={"Content-Type": "application/json"})
     responseJson = unpeelJson(response.json())
-
     allSamples = []
     for caseDict in responseJson:
         for sample in caseDict["submitter_sample_ids"]:
             allSamples.append(sample)
+    
     return allSamples
 
 
 def unpeelJson(jsonObj):
     jsonObj = jsonObj.get("data").get("hits")
+    
     return jsonObj
 
 
-def dataTypeSamples(samples):
+def dataTypeSamples(projectName, samples, platform):
     filesEndpt = "https://api.gdc.cancer.gov/files"
     # MAKE IT SO THAT FILTER GETS DATA TYPE INSERTED
     dataTypeFilter = {
@@ -211,7 +188,7 @@ def dataTypeSamples(samples):
                 "content": {
                     "field": "analysis.workflow_type",
                     "value": [
-                        workflowType
+                        "SeSAMe Methylation Beta Estimation"
                     ]
                 }
             },
@@ -219,7 +196,7 @@ def dataTypeSamples(samples):
                 "op": "in",
                 "content": {
                     "field": "data_category",
-                    "value": dataCategory
+                    "value": "dna methylation"
                 }
             },
             {
@@ -227,7 +204,7 @@ def dataTypeSamples(samples):
                 "content": {
                     "field": "data_type",
                     "value": [
-                        gdcDataType
+                        "Methylation Beta Value"
                     ]
                 }
             },
@@ -236,7 +213,7 @@ def dataTypeSamples(samples):
                 "content": {
                     "field": "experimental_strategy",
                     "value": [
-                        experimentalStrategy
+                        "Methylation Array"
                     ]
                 }
             },
@@ -277,6 +254,7 @@ def dataTypeSamples(samples):
                 dataTypeDict[sampleName] = {}
                 dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
                 uniqueSamples.append(sampleName)
+    
     return dataTypeDict, uniqueSamples
 
 
@@ -288,15 +266,17 @@ def xenaDataframe(xenaFile):
         result = executor.map(custom_round, tasks)
     # print(executor._max_workers)
     resultDF = pandas.concat(result, axis=1)
+    
     return resultDF
 
 
-def compare():
+def compare(sampleDict, xenaDF):
     samplesCorrect = 0
+    failed = []
     sampleNum = 1
+    total = len(sampleDict)
     for sample in sampleDict:
         fileCount = 0
-        print(f"Sample: {sample}\nSample Number: {sampleNum}\n\n")
         for fileID in sampleDict[sample]:
             fileName = sampleDict[sample][fileID]
             sampleFile = "gdcFiles/" + fileID + "/" + fileName
@@ -317,51 +297,53 @@ def compare():
                 sampleDataDF["nonNanCount"] += tempDF["nonNanCount"]
                 sampleDataDF["betaValue"] += tempDF["betaValue"]
             fileCount += 1
-
         sampleDataDF["betaValue"] = sampleDataDF["betaValue"].astype(float)
         sampleDataDF["betaValue"] = sampleDataDF.apply(lambda x: x["betaValue"]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
-
         sampleDataDF["betaValue"] = sampleDataDF["betaValue"].apply(round_ForNans)
-        # if len(sampleDataDF.index) != len(xenaDF.index):
-        #     print(f"Xena and Sample rows are not equal for sample {sample}\n")
-        #     sampleNum += 1
-        #     continue
         xenaColumn = xenaDF[sample]
         sampleColumn = sampleDataDF["betaValue"]
         xenaColumn.reset_index(inplace=True, drop=True)
         sampleColumn.reset_index(inplace=True, drop=True)
         if (sampleColumn.equals(xenaColumn)):
-            print("success")
+            status = "[{:d}/{:d}] Sample: {} - Passed"
+            logger.info(status.format(sampleNum, total, sample))
             samplesCorrect += 1
+        else:
+            status = "[{:d}/{:d}] Sample: {} - Failed"
+            logger.info(status.format(sampleNum, total, sample))
+            failed.append('{} ({})'.format(sample, sampleNum))
         sampleNum += 1
-    return samplesCorrect == len(sampleDict)
+    
+    return failed
 
 
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/TCGA-KICH/Xena_Matrices/TCGA-KICH.methylation450.tsv"
-xenaSamples = getXenaSamples(xenaFilePath)
-
-allSamples = getAllSamples(projectName)
-sampleDict, uniqueSamples = dataTypeSamples(allSamples)
-xenaDF = xenaDataframe(xenaFilePath)
-
-# print(len(sampleDict), len(xenaSamples))
-#
-# print(f"Retrieved Samples:\n{sorted(sampleDict)}")
-# print(f"Xena Samples:\n{sorted(xenaSamples)}")
-
-if sorted(uniqueSamples) != sorted(xenaSamples):
-    print("Samples retrieved from GDC and not in Xena Dataframe")
-    print([x for x in uniqueSamples if x not in xenaSamples])
-    print("Samples retrieved from Xena Dataframe and not in GDC retrieved samples")
-    print([x for x in xenaSamples if x not in sampleDict])
-    exit(1)
-
-fileIDS = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
-downloadFiles(fileIDS)
-# PASSED WITH TCGA KICH
-
-if compare():
-    print("Passed")
-else:
-    print("Fail")
-    exit(1)
+def main(projectName, xenaFilePath, dataType):
+    logger.info("Testing [{}] data for [{}].".format(dataType, projectName))
+    platformDict = {
+        "methylation_epic": "illumina methylation epic",
+        "methylation27": "illumina human methylation 27",
+        "methylation450": "illumina human methylation 450",
+        "methylation_epic_v2": "illumina methylation epic v2"
+    }
+    platform = platformDict[dataType]
+    xenaSamples = getXenaSamples(xenaFilePath)
+    allSamples = getAllSamples(projectName, platform)
+    sampleDict, uniqueSamples = dataTypeSamples(projectName, allSamples, platform)
+    xenaDF = xenaDataframe(xenaFilePath)
+    if sorted(uniqueSamples) != sorted(xenaSamples):
+        logger.info("ERROR: Samples retrieved from the GDC do not match those found in Xena matrix.")
+        logger.info(f"Number of samples from the GDC: {len(uniqueSamples)}")
+        logger.info(f"Number of samples in Xena matrix: {len(xenaSamples)}")
+        logger.info(f"Samples from GDC and not in Xena: {[x for x in uniqueSamples if x not in xenaSamples]}")
+        logger.info(f"Samples from Xena and not in GDC: {[x for x in xenaSamples if x not in uniqueSamples]}")
+        exit(1)
+    fileIDS = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
+    downloadFiles(fileIDS)
+    result = compare(sampleDict, xenaDF)
+    if len(result) == 0:
+        logger.info("[{}] test passed for [{}].".format(dataType, projectName))
+        return 'PASSED'
+    else:
+        logger.info("[{}] test failed for [{}].".format(dataType, projectName))
+        logger.info("Samples failed: {}".format(result))
+        return 'FAILED'

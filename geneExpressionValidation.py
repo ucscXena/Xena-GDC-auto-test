@@ -1,4 +1,5 @@
 import os
+import logging
 import sys
 import requests
 import json
@@ -7,38 +8,15 @@ import pandas
 import numpy
 from concurrent.futures import ThreadPoolExecutor
 
-if ( len(sys.argv) != 4 ):
-    print("Usage:\npython3 geneExpressionValidation.py [Project Name] [Xena File Path] [Data Type]")
-    exit(1)
 
-projectName = sys.argv[1]
-# projectName = "CGCI-HTMCP-CC"
-xenaFilePath = sys.argv[2]
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-CC/Xena_Matrices/CGCI-HTMCP-CC.star_fpkm.tsv"
-# dataType = "fpkm"
-dataType = sys.argv[3]
-
-dataTypeDict = {
-    "fpkm": "fpkm_unstranded",
-    "fpkm_uq": "fpkm_uq_unstranded",
-    "tpm": "tpm_unstranded",
-    "star_counts": "unstranded"
-}
-if( dataType not in dataTypeDict ):
-    print("Error:\n Acceptable data types are ['fpkm', 'fpkm_uq', 'tpm', 'star_counts']")
-    sys.exit(0)
-
-dataType = dataTypeDict[dataType]
-workflowType = "STAR - Counts"
-dataCategory = "Transcriptome Profiling"
-gdcDataType = "Gene Expression Quantification"
-experimentalStrategy = "RNA-Seq"
+logger = logging.getLogger(__name__)
 
 
 # Define your custom rounding function
 def custom_round(chunk):
     for col in chunk:
         chunk[col] = chunk[col].apply(lambda x: numpy.format_float_scientific(x, precision=8) if pandas.notna(x) else numpy.nan)
+    
     return chunk
 
 def round_ForNans(x):
@@ -54,12 +32,10 @@ def downloadFiles(fileList):
     }
     with open("payload.txt", "w") as payloadFile:
         payloadFile.write(str(jsonPayload).replace("\'", "\""))
-
-    print("Downloading from GDC: ")
+    logger.info("Downloading from GDC: ")
     subprocess.run(
         ["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
          "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
-
     os.system("mkdir -p gdcFiles")
     os.system("tar -xzf gdcFiles.tar.gz -C gdcFiles")
 
@@ -70,6 +46,7 @@ def getXenaSamples(xenaFile):  # get all samples from the xena matrix
         sampleList = header.split("\t")  # split tsv file into list
         sampleList.pop(0)  # remove unnecessary label
         sampleList = [sample.strip() for sample in sampleList]  # make sure there isn't extra whitespace
+    
     return sampleList
 
 
@@ -92,7 +69,7 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.analysis.workflow_type",
                     "value": [
-                        workflowType
+                        "STAR - Counts"
                     ]
                 }
             },
@@ -101,7 +78,7 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.data_category",
                     "value": [
-                        dataCategory
+                        "Transcriptome Profiling"
                     ]
                 }
             },
@@ -110,7 +87,7 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.data_type",
                     "value": [
-                        gdcDataType
+                        "Gene Expression Quantification"
                     ]
                 }
             },
@@ -119,13 +96,12 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.experimental_strategy",
                     "value": [
-                        experimentalStrategy
+                        "RNA-Seq"
                     ]
                 }
             }
         ]
     }
-
     params = {
         "filters": json.dumps(allSamplesFilter),
         "fields": "submitter_sample_ids",
@@ -134,22 +110,22 @@ def getAllSamples(projectName):
     }
     response = requests.post(casesEndpt, json=params, headers={"Content-Type": "application/json"})
     responseJson = unpeelJson(response.json())
-
     allSamples = []
     for caseDict in responseJson:
         for sample in caseDict["submitter_sample_ids"]:
             allSamples.append(sample)
+    
     return allSamples
 
 
 def unpeelJson(jsonObj):
     jsonObj = jsonObj.get("data").get("hits")
+    
     return jsonObj
 
 
-def dataTypeSamples(samples):
+def dataTypeSamples(samples, projectName):
     filesEndpt = "https://api.gdc.cancer.gov/files"
-    # MAKE IT SO THAT FILTER GETS DATA TYPE INSERTED
     dataTypeFilter = {
         "op": "and",
         "content": [
@@ -167,7 +143,7 @@ def dataTypeSamples(samples):
                 "content": {
                     "field": "analysis.workflow_type",
                     "value": [
-                        workflowType
+                        'STAR - Counts'
                     ]
                 }
             },
@@ -175,7 +151,7 @@ def dataTypeSamples(samples):
                 "op": "in",
                 "content": {
                     "field": "data_category",
-                    "value": dataCategory
+                    "value": "Transcriptome Profiling"
                 }
             },
             {
@@ -183,7 +159,7 @@ def dataTypeSamples(samples):
                 "content": {
                     "field": "data_type",
                     "value": [
-                        gdcDataType
+                        "Gene Expression Quantification"
                     ]
                 }
             },
@@ -192,7 +168,7 @@ def dataTypeSamples(samples):
                 "content": {
                     "field": "experimental_strategy",
                     "value": [
-                        experimentalStrategy
+                        "RNA-Seq"
                     ]
                 }
             },
@@ -224,6 +200,7 @@ def dataTypeSamples(samples):
                 dataTypeDict[sampleName] = {}
                 dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
                 uniqueSamples.append(sampleName)
+    
     return dataTypeDict, uniqueSamples
 
 
@@ -233,17 +210,18 @@ def xenaDataframe(xenaFile):
     tasks = [xenaDF[i] for i in splitDF]
     with ThreadPoolExecutor() as executor:
         result = executor.map(custom_round, tasks)
-#        print(executor._max_workers)
     resultDF = pandas.concat(result, axis=1)
+    
     return resultDF
 
 
-def compare():
+def compare(logger, dataType, sampleDict, xenaDF):
     samplesCorrect = 0
-    sampleNum = 0
+    failed = []
+    sampleNum = 1
+    total = len(sampleDict)
     for sample in sampleDict:
         fileCount = 0
-        print(f"Sample: {sample}\nSample Number: {sampleNum}\n\n")
         for fileID in sampleDict[sample]:
             fileName = sampleDict[sample][fileID]
             sampleFile = "gdcFiles/" + fileID + "/" + fileName
@@ -266,11 +244,9 @@ def compare():
                 sampleDataDF["nonNanCount"] += tempDF["nonNanCount"]
                 sampleDataDF[dataType] += tempDF[dataType]
             fileCount += 1
-
         sampleDataDF[dataType] = sampleDataDF[dataType].astype(float)
         sampleDataDF[dataType] = sampleDataDF.apply(lambda x: x[dataType]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
         sampleDataDF[dataType] = numpy.log2(sampleDataDF[dataType] + 1)
-
         vectorRound = numpy.vectorize(round_ForNans)
         roundedSeries = vectorRound(sampleDataDF[dataType])
         sampleDataDF[dataType] = roundedSeries
@@ -283,11 +259,13 @@ def compare():
         xenaColumn = xenaDF[sample]
         sampleColumn = sampleDataDF[dataType]
         if( xenaColumn.equals(sampleColumn)):
-            print("success")
+            status = "[{:d}/{:d}] Sample: {} - Passed"
+            logger.info(status.format(sampleNum, total, sample))
             samplesCorrect += 1
         else:
-            print(f"{sample} failed")
-            exit(1)
+            status = "[{:d}/{:d}] Sample: {} - Failed"
+            logger.info(status.format(sampleNum, total, sample))
+            failed.append('{} ({})'.format(sample, sampleNum))
             # for i in range(0, len(xenaColumn.index)):
             #     xenaCell = xenaColumn.iloc[i]
             #     sampleCell = sampleColumn.iloc[i]
@@ -306,28 +284,37 @@ def compare():
         # if cellsCorrect == len(sampleDataDF.index):
         #     samplesCorrect += 1
         sampleNum += 1
-    return samplesCorrect == len(sampleDict)
+    
+    return failed
 
 
-xenaSamples = getXenaSamples(xenaFilePath)
-
-allSamples = getAllSamples(projectName)
-sampleDict, uniqueSamples = dataTypeSamples(allSamples)
-xenaDF = xenaDataframe(xenaFilePath)
-# print(len(sampleDict), len(xenaSamples))
-
-if sorted(uniqueSamples) != sorted(xenaSamples):
-    print("Samples retrieved from GDC and not in Xena Dataframe")
-    print([x for x in uniqueSamples if x not in xenaSamples])
-    print("Samples retrieved from Xena Dataframe and not in GDC retrieved samples")
-    print([x for x in xenaSamples if x not in sampleDict])
-    exit(1)
-
-fileIDS = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
-downloadFiles(fileIDS)
-
-if compare():
-    print("Passed")
-else:
-    print("Fail")
-    exit(1)
+def main(dataType, xenaFilePath, projectName):
+    logger.info("Testing [{}] data for [{}].".format(dataType, projectName))
+    dataTypeDict = {
+    "star_fpkm": "fpkm_unstranded",
+    "star_fpkm-uq": "fpkm_uq_unstranded",
+    "star_tpm": "tpm_unstranded",
+    "star_counts": "unstranded"
+    }
+    dataColumn = dataTypeDict[dataType]
+    xenaSamples = getXenaSamples(xenaFilePath)
+    allSamples = getAllSamples(projectName)
+    sampleDict, uniqueSamples = dataTypeSamples(allSamples, projectName)
+    xenaDF = xenaDataframe(xenaFilePath)
+    if sorted(uniqueSamples) != sorted(xenaSamples):
+        logger.info("ERROR: Samples retrieved from the GDC do not match those found in Xena matrix.")
+        logger.info(f"Number of samples from the GDC: {len(uniqueSamples)}")
+        logger.info(f"Number of samples in Xena matrix: {len(xenaSamples)}")
+        logger.info(f"Samples from GDC and not in Xena: {[x for x in uniqueSamples if x not in xenaSamples]}")
+        logger.info(f"Samples from Xena and not in GDC: {[x for x in xenaSamples if x not in uniqueSamples]}") 
+        exit(1)
+    fileIDS = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
+    downloadFiles(fileIDS)
+    result = compare(logger, dataColumn, sampleDict, xenaDF)
+    if len(result) == 0:
+        logger.info("[{}] test passed for [{}].".format(dataType, projectName))
+        return 'PASSED'
+    else:
+        logger.info("[{}] test failed for [{}].".format(dataType, projectName))
+        logger.info("Samples failed: {}".format(result))
+        return 'FAILED'
