@@ -7,16 +7,17 @@ import pandas
 import numpy
 import difflib
 
-if (len(sys.argv) != 4):
-    print("Usage:\npython3 somaticMutationValidation.py [Project Name] [Xena File Path] [Experimental Strategy]")
-    print("Valid Experimental Strategies:\n['WXS', 'Targeted']")
-    exit(1)
+# if (len(sys.argv) != 4):
+#     print("Usage:\npython3 somaticMutationValidation.py [Project Name] [Xena File Path] [Experimental Strategy]")
+#     print("Valid Experimental Strategies:\n['WXS', 'Targeted']")
+#     exit(1)
 
-projectName = sys.argv[1]
-# projectName = "CGCI-HTMCP-CC"
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/CGCI-HTMCP-CC/Xena_Matrices/CGCI-HTMCP-CC.somaticmutation_snv.tsv"
-xenaFilePath = sys.argv[2]
-experimentalStrategy = sys.argv[3]
+# projectName = sys.argv[1]
+projectName = "HCMI-CMDC"
+xenaFilePath = "/Users/jaimes28/Desktop/gdcData/HCMI-CMDC/Xena_Matrices/HCMI-CMDC.somaticmutation_wxs.tsv"
+# xenaFilePath = sys.argv[2]
+# experimentalStrategy = sys.argv[3]
+experimentalStrategy = "WXS"
 
 experimentalStrategyDict = {"WXS": "WXS",
                             "Targeted": "Targeted Sequencing"}
@@ -253,11 +254,12 @@ def nonEmptySamples():
         sampleFile = "gdcFiles/" + fileId + "/" + fileName
         normalSampleName = sample[:sample.index(".")]
         sampleDataDF = pandas.read_csv(sampleFile, sep="\t", skiprows=7)
-        if (len(sampleDataDF.index) == 0):
+        if len(sampleDataDF.index) == 0:
+            allSampleNames.append(normalSampleName)
             continue
-        if (normalSampleName not in nonEmpty):
+        if sample not in nonEmpty:
             nonEmpty.append(normalSampleName)
-            allSampleNames.append(sample)
+            allSampleNames.append(normalSampleName)
 
     return nonEmpty, allSampleNames
 
@@ -265,33 +267,51 @@ def nonEmptySamples():
 def sampleDataframe():
     dataFrame = pandas.DataFrame()
     # Create a dataframe for all the samples retrieved
-    for sample in sampleNames:
+    for sample in sampleDict:
         fileId = sampleDict[sample]["file_id"]
         fileName = sampleDict[sample]["file_name"]
         sampleFile = "gdcFiles/" + fileId + "/" + fileName
         normalSampleName = sample[:sample.index(".")]
         # Create data frame for sample data
-        sampleDataDF = pandas.read_csv(sampleFile, sep="\t", skiprows=7)
-        sampleDataDF.rename(columns={'Hugo_Symbol': 'gene'}, inplace=True)
-        sampleDataDF.rename(columns={'Chromosome': 'chrom'}, inplace=True)
-        sampleDataDF.rename(columns={'Start_Position': 'start'}, inplace=True)
-        sampleDataDF.rename(columns={'End_Position': 'end'}, inplace=True)
-        sampleDataDF.rename(columns={'Reference_Allele': 'ref'}, inplace=True)
-        sampleDataDF.rename(columns={'Tumor_Seq_Allele2': 'alt'}, inplace=True)
-        sampleDataDF.rename(columns={'HGVSp_Short': 'Amino_Acid_Change'}, inplace=True)
-        sampleDataDF.rename(columns={'Consequence': 'effect'}, inplace=True)
+        if normalSampleName in nonEmptySamples:
+            sampleDataDF = pandas.read_csv(sampleFile, sep="\t", skiprows=7)
+            sampleDataDF.rename(columns={'Hugo_Symbol': 'gene'}, inplace=True)
+            sampleDataDF.rename(columns={'Chromosome': 'chrom'}, inplace=True)
+            sampleDataDF.rename(columns={'Start_Position': 'start'}, inplace=True)
+            sampleDataDF.rename(columns={'End_Position': 'end'}, inplace=True)
+            sampleDataDF.rename(columns={'Reference_Allele': 'ref'}, inplace=True)
+            sampleDataDF.rename(columns={'Tumor_Seq_Allele2': 'alt'}, inplace=True)
+            sampleDataDF.rename(columns={'HGVSp_Short': 'Amino_Acid_Change'}, inplace=True)
+            sampleDataDF.rename(columns={'Consequence': 'effect'}, inplace=True)
 
-        sampleDataDF["dna_vaf"] = sampleDataDF.apply(lambda x: vaf(x.t_alt_count, x.t_depth), axis=1)
+            sampleDataDF["dna_vaf"] = sampleDataDF.apply(lambda x: vaf(x.t_alt_count, x.t_depth), axis=1)
 
-        sampleDataDF = sampleDataDF.loc[:,
-                       ["gene", "chrom", "start", "end", "ref", "alt", "Tumor_Sample_Barcode", "Amino_Acid_Change",
-                        "effect",
-                        "callers", "dna_vaf"]]
-        sampleDataDF = sampleDataDF[
-            ["gene", "chrom", "start", "end", "ref", "alt", "Tumor_Sample_Barcode", "Amino_Acid_Change", "effect",
-             "callers", "dna_vaf"]]
-        sampleDataDF.insert(0, "sample", normalSampleName)
-        dataFrame = pandas.concat([dataFrame, sampleDataDF])
+            sampleDataDF = sampleDataDF.loc[:,
+                           ["gene", "chrom", "start", "end", "ref", "alt", "Tumor_Sample_Barcode", "Amino_Acid_Change",
+                            "effect",
+                            "callers", "dna_vaf"]]
+            sampleDataDF = sampleDataDF[
+                ["gene", "chrom", "start", "end", "ref", "alt", "Tumor_Sample_Barcode", "Amino_Acid_Change", "effect",
+                 "callers", "dna_vaf"]]
+            sampleDataDF.insert(0, "sample", normalSampleName)
+            dataFrame = pandas.concat([dataFrame, sampleDataDF])
+        else:
+            noMutation = {
+                'gene': numpy.nan,
+                'chrom': numpy.nan,
+                'start': -1,
+                'end': -1,
+                'ref': numpy.nan,
+                'alt': numpy.nan,
+                'Amino_Acid_Change': numpy.nan,
+                'effect': numpy.nan,
+            }
+            sampleDataDF = pandas.DataFrame([noMutation])
+            sampleDataDF.insert(0, 'sample', normalSampleName)
+            dataFrame = pandas.concat([dataFrame, sampleDataDF])
+            x = 5
+
+
     dataFrame["dna_vaf"] = dataFrame["dna_vaf"].apply(round_ForNans)
     return dataFrame
 
@@ -303,12 +323,12 @@ sampleDict, seenSamples = dataTypeSamples(allSamples)
 xenaDF = xenaDataframe(xenaFilePath)
 
 fileIDS = [sampleDict[x]["file_id"] for x in sampleDict]
-downloadFiles(fileIDS)
+# downloadFiles(fileIDS)
 
-validSamples, sampleNames = nonEmptySamples()
-validSamples = list(set(validSamples))
+nonEmptySamples, sampleNames = nonEmptySamples()
+nonEmptySamples = list(set(nonEmptySamples))
 
-if sorted(validSamples) != sorted(xenaSamples):
+if sorted(sampleNames) != sorted(xenaSamples):
     print("Samples retrieved from GDC and not in Xena Dataframe")
     print([x for x in seenSamples if x not in xenaSamples])
     print("Samples retrieved from Xena Dataframe and not in GDC retrieved samples")
@@ -335,12 +355,12 @@ try:
     pandas.testing.assert_frame_equal(sampleDf, xenaDF, check_dtype=False)
     print("Passed")
 except AssertionError:
-    # diff = sampleDf.merge(xenaDF, indicator=True, how='left').loc[lambda x: x['_merge'] != 'both']
-    # for i in range(0, len(sampleDf)):
-    #     xenaRow = xenaDF.iloc[i]
-    #     sampleRow = sampleDf.iloc[i]
-    #     if not(sampleRow.equals(xenaRow)):
-    #         print("err")
+    diff = sampleDf.merge(xenaDF, indicator=True, how='left').loc[lambda x: x['_merge'] != 'both']
+    for i in range(0, len(sampleDf)):
+        xenaRow = xenaDF.iloc[i]
+        sampleRow = sampleDf.iloc[i]
+        if not(sampleRow.equals(xenaRow)):
+            print("err")
     with open("sampleDF.csv", "r") as sampleFile:
         with open("xenaDF.csv", "r") as xenaDfFile:
             # if they are not equal then output diff of both files
