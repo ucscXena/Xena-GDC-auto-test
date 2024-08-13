@@ -245,7 +245,7 @@ def nonEmptySamples(sampleDict):
     return nonEmpty, allSampleNames
 
 
-def sampleDataframe(sampleNames, sampleDict):
+def sampleDataframe(sampleNames, sampleDict, nonEmpty):
     dataFrame = pandas.DataFrame()
     # Create a dataframe for all the samples retrieved
     for sample in sampleDict:
@@ -254,7 +254,7 @@ def sampleDataframe(sampleNames, sampleDict):
         sampleFile = "gdcFiles/" + fileId + "/" + fileName
         normalSampleName = sample[:sample.index(".")]
         # Create data frame for sample data
-        if normalSampleName in nonEmptySamples:
+        if normalSampleName in nonEmpty:
             sampleDataDF = pandas.read_csv(sampleFile, sep="\t", skiprows=7)
             sampleDataDF.rename(columns={'Hugo_Symbol': 'gene'}, inplace=True)
             sampleDataDF.rename(columns={'Chromosome': 'chrom'}, inplace=True)
@@ -310,8 +310,8 @@ def main(projectName, xenaFilePath, dataType):
     xenaDF = xenaDataframe(xenaFilePath)
     fileIDS = [sampleDict[x]["file_id"] for x in sampleDict]
     downloadFiles(fileIDS)
-    nonEmptySamples, sampleNames = nonEmptySamples(sampleDict)
-    nonEmptySamples = list(set(nonEmptySamples))
+    nonEmpty, sampleNames = nonEmptySamples(sampleDict)
+    nonEmpty = list(set(nonEmpty))
     if sorted(sampleNames) != sorted(xenaSamples):
         logger.info("ERROR: Samples retrieved from the GDC do not match those found in Xena matrix.")
         logger.info(f"Number of samples from the GDC: {len(sampleNames)}")
@@ -320,7 +320,7 @@ def main(projectName, xenaFilePath, dataType):
         logger.info(f"Samples from Xena and not in GDC: {[x for x in xenaSamples if x not in sampleNames]}")
         exit(1)
     # create dataframe for samples
-    sampleDf = sampleDataframe(sampleNames, sampleDict)
+    sampleDf = sampleDataframe(sampleNames, sampleDict, nonEmpty)
     xenaDF.sort_values(by=sorted(xenaDF), inplace=True)
     # sort sample dataframe as well
     sampleDf.sort_values(by=sorted(xenaDF), inplace=True)
