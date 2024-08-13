@@ -3,12 +3,9 @@ import sys
 import requests
 import json
 import subprocess
-import tarfile
 import pandas
 import numpy
-from math import log10, floor
 from concurrent.futures import ThreadPoolExecutor
-import multiprocessing
 
 if ( len(sys.argv) != 4 ):
     print("Usage:\npython3 geneExpressionValidation.py [Project Name] [Xena File Path] [Data Type]")
