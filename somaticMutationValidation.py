@@ -239,7 +239,7 @@ def nonEmptySamples(sampleDict):
             allSampleNames.append(normalSampleName)
             continue
         if sample not in nonEmpty:
-            nonEmpty.append(normalSampleName)
+            nonEmpty.append(sample)
             allSampleNames.append(normalSampleName)
 
     return nonEmpty, allSampleNames
@@ -254,7 +254,7 @@ def sampleDataframe(sampleNames, sampleDict, nonEmpty):
         sampleFile = "gdcFiles/" + fileId + "/" + fileName
         normalSampleName = sample[:sample.index(".")]
         # Create data frame for sample data
-        if normalSampleName in nonEmpty:
+        if sample in nonEmpty:
             sampleDataDF = pandas.read_csv(sampleFile, sep="\t", skiprows=7)
             sampleDataDF.rename(columns={'Hugo_Symbol': 'gene'}, inplace=True)
             sampleDataDF.rename(columns={'Chromosome': 'chrom'}, inplace=True)
@@ -290,8 +290,6 @@ def sampleDataframe(sampleNames, sampleDict, nonEmpty):
             sampleDataDF = pandas.DataFrame([noMutation])
             sampleDataDF.insert(0, 'sample', normalSampleName)
             dataFrame = pandas.concat([dataFrame, sampleDataDF])
-            x = 5
-
 
     dataFrame["dna_vaf"] = dataFrame["dna_vaf"].apply(round_ForNans)
 
@@ -312,6 +310,7 @@ def main(projectName, xenaFilePath, dataType):
     downloadFiles(fileIDS)
     nonEmpty, sampleNames = nonEmptySamples(sampleDict)
     nonEmpty = list(set(nonEmpty))
+    sampleNames = list(set(sampleNames))
     if sorted(sampleNames) != sorted(xenaSamples):
         logger.info("ERROR: Samples retrieved from the GDC do not match those found in Xena matrix.")
         logger.info(f"Number of samples from the GDC: {len(sampleNames)}")
@@ -327,6 +326,19 @@ def main(projectName, xenaFilePath, dataType):
     # then reset index ordering for each one
     xenaDF.reset_index(inplace=True, drop=True)
     sampleDf.reset_index(inplace=True, drop=True)
+
+    # drop empty mutation representations if there is existing data in dataframe
+    noMutationIndices = sampleDf.index[sampleDf['start'] == -1].tolist()
+    indicesToDrop = []
+    for noMutationIndex in noMutationIndices:
+        noMutationSample = sampleDf.iloc[noMutationIndex]["sample"]
+        if not xenaDF[(xenaDF["sample"] == noMutationSample) & (xenaDF['start'] != -1)].empty:
+            indicesToDrop.append(noMutationIndex)
+    sampleDf.drop(indicesToDrop, inplace=True)
+    sampleDf.reset_index(inplace=True, drop=True)
+
+
+
     with open("sampleDF.csv", "w") as sampleFile:
         sampleDf.to_csv(sampleFile)
     with open("xenaDF.csv", "w") as xenaDfFile:
