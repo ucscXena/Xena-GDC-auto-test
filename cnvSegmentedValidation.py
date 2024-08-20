@@ -1,16 +1,13 @@
 import os
 import sys
 import logging
-
-import pandas as pd
+import pandas
 import difflib
 import requests
 import json
 import subprocess
-import tarfile
 import pandas
 import numpy
-from math import floor, log10
 
 
 logger = logging.getLogger(__name__)
@@ -230,7 +227,7 @@ def sampleDataframe(workflowType, sampleDict):
         sampleDataDF.rename(columns={'GDC_Aliquot': 'sample'}, inplace=True)
         if( workflowType == "DNAcopy" ):
             sampleDataDF.rename(columns={'Segment_Mean': 'value'}, inplace=True)
-        elif( workflowType == "AscatNGS" ):
+        elif( workflowType == "AscatNGS" or workflowType == "ASCAT2" or workflowType == "ASCAT3"):
             sampleDataDF.rename(columns={'Copy_Number': 'value'}, inplace=True)
         sampleDataDF.drop(columns=['Major_Copy_Number', 'Minor_Copy_Number', 'Num_Probes'], inplace=True, errors="ignore")
         sampleDataDF.replace(sampleDataDF.iloc[0].iat[0], normalSampleName, inplace=True)
@@ -244,15 +241,21 @@ def main(projectName, xenaFilePath, dataType):
     logger.info("Testing [{}] data for [{}].".format(dataType, projectName))
     workflowDict = {
         "masked_cnv_DNAcopy": "DNAcopy",
-        "segment_cnv_ascat-ngs": "AscatNGS"
+        "segment_cnv_ascat-ngs": "AscatNGS",
+        "allele_cnv_ascat2": "ASCAT2",
+        "allele_cnv_ascat3": "ASCAT3",
     }
     gdcDataTypeDict = {
         "DNAcopy": "Masked Copy Number Segment",
-        "AscatNGS": "Copy Number Segment"
+        "AscatNGS": "Copy Number Segment",
+        "ASCAT2": "Allele-specific Copy Number Segment",
+        "ASCAT3": "Allele-specific Copy Number Segment"
     }
     experimentalStrategyDict = {
         "DNAcopy": "Genotyping Array",
-        "AscatNGS": "WGS"
+        "AscatNGS": "WGS",
+        "ASCAT2": "Genotyping Array",
+        "ASCAT3": "Genotyping Array"
     }
     workflowType = workflowDict[dataType]
     gdcDataType = gdcDataTypeDict[workflowType]
