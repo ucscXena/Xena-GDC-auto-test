@@ -11,6 +11,9 @@ import cnvSegmentedValidation as seg_cnv_test
 import cnvGeneLevelValidation as gl_cnv_test
 import somaticMutationValidation as somaticmutation_test
 import methylationValidation as methylation_test
+import survivalAnalysisEndpointValidation as survival_test
+import proteinValidation as protein_test
+import clinicalValidation as clinical_test
 
 
 valid_dtype = [
@@ -84,7 +87,7 @@ def run_tests(project, data_type):
         result = ge_test.main(data_type, path, project)
     elif data_type == 'mirna':
         result = mirna_test.main(project, path, data_type)
-    elif data_type == 'segment_cnv_ascat-ngs' or data_type == 'masked_cnv_DNAcopy':
+    elif data_type == 'segment_cnv_ascat-ngs' or data_type == 'masked_cnv_DNAcopy' or data_type == "allele_cnv_ascat2" or data_type == "allele_cnv_ascat3":
         result = seg_cnv_test.main(project, path, data_type)
     elif data_type == 'gene-level_ascat-ngs' or data_type == 'gene-level_ascat2' or data_type == 'gene-level_ascat3' or data_type == 'gene-level_absolute':
         result = gl_cnv_test.main(project, path, data_type)
@@ -92,11 +95,12 @@ def run_tests(project, data_type):
         result = somaticmutation_test.main(project, path, data_type)
     elif data_type == 'methylation_epic' or data_type == 'methylation_epic_v2' or data_type == 'methylation27' or data_type == 'methylation450':
         result = methylation_test.main(project, path, data_type)
-    # elif data_type == 'protein':
-    # elif data_type == 'survival':
-    # elif data_type == 'allele_cnv_ascat2':
-    # elif data_type == 'allele_cnv_ascat3':
-        
+    elif data_type == 'survival':
+        result = survival_test.main(project, path, data_type)
+    elif data_type == 'protein':
+        result = protein_test.main(project, path, data_type)
+    elif data_type == 'clinical':
+        result = clinical_test.main(project, path, data_type)
     return result
 
 
@@ -127,12 +131,9 @@ def main():
                 for star_dtype in ['star_counts', 'star_tpm', 'star_fpkm', 'star_fpkm-uq']:
                     result = run_tests(project, star_dtype)
                     test_results.append([project, star_dtype, result])
-            elif data_type == 'clinical' or data_type == 'survival' or data_type == 'protein' or data_type =='allele_cnv_ascat2' or data_type == 'allele_cnv_ascat3':
-                logger.info('{} test still in progress of being written or having bugs fixed.'.format(data_type))
-            else: 
+            else:
                 result = run_tests(project, data_type)
                 test_results.append([project, data_type, result])
-        data_types = None
     for r in test_results:
         logger.info('{} data for {} has {}.'.format(r[1], r[0], r[2]))
 
