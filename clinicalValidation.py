@@ -5,6 +5,9 @@ import pandas
 import numpy
 import pandas
 import ast
+import logging
+
+logger = logging.getLogger(__name__)
 
 GDC_DROPPED_FIELDS = {
     'cases.aliquot_ids',
@@ -55,18 +58,8 @@ GDC_DROPPED_FIELDS = {
     'cases.samples.created_datetime',
     'cases.samples.updated_datetime',
     'cases.samples.state',
-    'samples.portions',  #cases.samples.portions_______
+    'cases.samples.portions',  #cases.samples.portions_______
 }
-casesEndpt = "https://api.gdc.cancer.gov/cases"
-
-if (len(sys.argv) != 3):
-    print("Usage:\npython3 clinicalValidation.py [Project Name] [Xena File Path]")
-    exit(1)
-
-projectName = sys.argv[1]
-# projectName = "TARGET-AML"
-# xenaFilePath = "/Users/jaimes28/Desktop/gdcData/TARGET-AML/Xena_Matrices/TARGET-AML.clinical.tsv"
-xenaFilePath = sys.argv[2]
 
 
 def unpack_dict(d, parent_key='', sep='.'):
@@ -254,44 +247,12 @@ def update_dict_without_overwriting(original_dict, new_dict):
     return original_dict
 
 
-def getAllSamples(projectName):
-    allSamplesFilter = {
-        "op": "and",
-        "content": [
-            {
-                "op": "in",
-                "content": {
-                    "field": "cases.project.project_id",
-                    "value": [
-                        projectName
-                    ]
-                }
-            }
-        ]
-    }
-
-    params = {
-        "filters": json.dumps(allSamplesFilter),
-        "fields": "submitter_sample_ids",
-        "format": "json",
-        "size": 2000000
-    }
-    response = requests.post(casesEndpt, json=params, headers={"Content-Type": "application/json"})
-    responseJson = unpeelJson(response.json())
-
-    allSamples = []
-    for caseDict in responseJson:
-        for sample in caseDict["submitter_sample_ids"]:
-            allSamples.append(sample)
-    return allSamples
-
-
 def availableFields():
     response = requests.get("https://api.gdc.cancer.gov/files/_mapping")
     availableFields = response.json()["fields"]
     wantedFields = []
     for field in availableFields:
-        if field not in GDC_DROPPED_FIELDS and not field.startswith('cases.summary.') and field.startswith("cases.") and not field.startswith("cases.follow_ups."):
+        if field not in GDC_DROPPED_FIELDS and not field.startswith('cases.summary.') and field.startswith("cases.") and not field.startswith("cases.follow_ups.") and not field.startswith("cases.samples.portions"):
             wantedFields.append(field)
     return wantedFields
 
@@ -301,7 +262,7 @@ def unpeelJson(jsonObj):
     return jsonObj
 
 
-def getFieldData(fields):
+def getFieldData(fields, projectName):
     projectFields = [x.removeprefix("cases.project.") for x in fields if "cases.project." in x]
     for x in fields:
         if "cases.project." in x:
@@ -416,7 +377,7 @@ def getFieldData(fields):
 
 
 # ***
-def validSamples(caseData):
+def validSamples(caseData, projectName):
     fileFilter = {
         "op": "and",
         "content": [
@@ -459,13 +420,6 @@ def validSamples(caseData):
     response = requests.post("https://api.gdc.cancer.gov/files/", json=params, headers={"Content-Type": "application/json"})
     response = unpeelJson(response.json())
     keepSamples = []
-    totalSamples = []
-    for case in caseData:
-        case = caseData[case]
-        for sample in case["samples"]:
-            totalSamples.append(sample["submitter_id"])
-
-
 
     for file in response:
         samples = file["cases"][0]["samples"]
@@ -482,7 +436,6 @@ def validSamples(caseData):
                 if sample['tissue_type'] == 'Tumor' and submitter_id not in keepSamples:
                     keepSamples.append(submitter_id)
 
-    rightSamples = 0
     for caseID, caseInfo in caseData.items():
         sampleIndex = 0
         while sampleIndex < (len(caseInfo["samples"])):
@@ -490,11 +443,8 @@ def validSamples(caseData):
             if sample["submitter_id"] not in keepSamples:
                 caseInfo["samples"].pop(sampleIndex)
                 sampleIndex -= 1
-            else:
-                rightSamples += 1
             sampleIndex += 1
-    x=5
-
+    return caseData
 
 # *****
 def formatDiagnosis(caseData):
@@ -512,7 +462,7 @@ def formatDiagnosis(caseData):
                     update_dict_without_overwriting(diagnosisTempDict[id], diagnosis)
                 # diagnosisTempDict = update_dict_without_overwriting(diagnosisTempDict, diagnosis)
             case["diagnoses"] = [diagnosisTempDict[diagnosis] for diagnosis in diagnosisTempDict]
-
+    return caseData
 
 # ***
 def formatTreatments(caseData):
@@ -530,6 +480,7 @@ def formatTreatments(caseData):
                             update_dict_without_overwriting(treatmentTempDict[treatment["treatment_id"]], treatment )
 
                     diagnosis["treatments"] = [treatmentTempDict[treatment] for treatment in treatmentTempDict]
+    return caseData
 
 
 def formatPathology(caseData):
@@ -684,63 +635,117 @@ def processSamples(caseData):
     return sampleOrientedData
 
 
-def compare():
-    for i in range(0, len(myDF)):
-        myDFRow = myDF.iloc[i]
-        dataFrameRow = dataFrame.iloc[i]
-        for column in myDF:
+def compare(logger, gdcDF, xenaDF):
+    failed = []
+    sampleNum = 1
+    total = len(gdcDF)
+
+    for i in range(0, len(gdcDF)):
+        gdcRow = gdcDF.iloc[i]
+        xenaRow = xenaDF.iloc[i]
+        sample = xenaRow["sample"]
+        hasFailed = False
+
+        for column in gdcDF:
             if column.endswith((".treatments.diagnoses", ".annotations.diagnoses", ".pathology_details.diagnoses")):
                 continue
-            xenaCell = dataFrameRow[column]
-            myCell = myDFRow[column]
-            if pandas.isna(xenaCell) and pandas.isna(myCell):
+            xenaCell = xenaRow[column]
+            gdcCell = gdcRow[column]
+            if pandas.isna(xenaCell) and pandas.isna(gdcCell):
                 continue
-            if not general_compare(xenaCell, myCell):
-                print("Error")
-                print(f"Xena Value: {xenaCell}")
-                print(f"Retrieved Value: {myCell}")
-                exit(1)
-    print("Passed")
+            if not general_compare(xenaCell, gdcCell):
+                hasFailed = True
+                break
+        if hasFailed:
+            status = "[{:d}/{:d}] Sample: {} - Failed"
+            logger.info(status.format(sampleNum, total, sample))
+            failed.append('{} ({})'.format(sample, sampleNum))
+        else:
+            status = "[{:d}/{:d}] Sample: {} - Passed"
+            logger.info(status.format(sampleNum, total, sample))
+        sampleNum += 1
+    return failed
 
 
-samples = getAllSamples(projectName)
-wantedFields = availableFields()
-caseData = getFieldData(wantedFields)
-formatDiagnosis(caseData)
-formatTreatments(caseData)
+def formatGDCDataframe(gdcDF):
+    for col in gdcDF.columns:
+        if col == "samples.submitter_id":
+            gdcDF.rename(columns={col: "sample"}, inplace=True)
+            continue
+        gdcDF.rename(columns={col: ".".join((col.split("."))[::-1])}, inplace=True)
+    gdcDF["id"] = gdcDF["case_id"]
+    if "age_at_diagnosis.diagnoses" in gdcDF.columns:
+        gdcDF["age_at_earliest_diagnosis.diagnoses.xena_derived"] = gdcDF['age_at_diagnosis.diagnoses'].apply(lambda x: customMin(x) if isinstance(x, list) else x)
+        gdcDF["age_at_earliest_diagnosis_in_years.diagnoses.xena_derived"] = gdcDF["age_at_earliest_diagnosis.diagnoses" \
+                                                                                 ".xena_derived"].apply(lambda x: x/365)
+    return gdcDF
 
-for id in caseData:
-    caseData[id] = unpack_dict(caseData[id])
 
-validSamples(caseData)
-sampleOrientedData = processSamples(caseData)
+def main(projectName, xenaFilePath, dataType):
+    wantedFields = availableFields()
+    caseData = getFieldData(wantedFields, projectName)
+    caseData = formatDiagnosis(caseData)
+    caseData = formatTreatments(caseData)
 
-dataFrame = pandas.read_csv(xenaFilePath, sep='\t')
-myDF = pandas.DataFrame(list(sampleOrientedData.values()))
-for col in myDF.columns:
-    if col == "samples.submitter_id":
-        myDF.rename(columns={col: "sample"}, inplace=True)
-        continue
-    myDF.rename(columns={col: ".".join((col.split("."))[::-1])}, inplace=True)
-myDF["id"] = myDF["case_id"]
-if "age_at_diagnosis.diagnoses" in myDF.columns:
-    myDF["age_at_earliest_diagnosis.diagnoses.xena_derived"] = myDF['age_at_diagnosis.diagnoses'].apply(lambda x: customMin(x) if isinstance(x, list) else x)
-    myDF["age_at_earliest_diagnosis_in_years.diagnoses.xena_derived"] = myDF["age_at_earliest_diagnosis.diagnoses" \
-                                                                             ".xena_derived"].apply(lambda x: x/365)
+    for id in caseData:
+        caseData[id] = unpack_dict(caseData[id])
 
-myDF = myDF[list(dataFrame.columns)]
+    caseData = validSamples(caseData, projectName)
+    sampleOrientedData = processSamples(caseData)
 
-myDF.convert_dtypes().dtypes
-dataFrame.convert_dtypes().dtypes
+    xenaDataframe = pandas.read_csv(xenaFilePath, sep='\t')
+    gdcDataframe = pandas.DataFrame(list(sampleOrientedData.values()))
 
-myDF.fillna(pandas.NA, inplace=True)
-dataFrame.fillna(pandas.NA, inplace=True)
 
-myDF.sort_values(by=["sample"], inplace=True)
-dataFrame.sort_values(by=["sample"], inplace=True)
+    gdcDataframe = formatGDCDataframe(gdcDataframe)
 
-myDF.reset_index(drop=True, inplace=True)
-dataFrame.reset_index(drop=True, inplace=True)
+    xenaSamples = xenaDataframe["sample"].tolist()
+    gdcSamples = gdcDataframe["sample"].tolist()
 
-compare()
-exit(0)
+    if sorted(gdcSamples) != sorted(xenaSamples):
+        logger.info("ERROR: Samples retrieved from the GDC do not match those found in Xena matrix.")
+        logger.info(f"Number of samples from the GDC: {len(gdcSamples)}")
+        logger.info(f"Number of samples in Xena matrix: {len(xenaSamples)}")
+        logger.info(f"Samples from GDC and not in Xena: {[x for x in gdcSamples if x not in xenaSamples]}")
+        logger.info(f"Samples from Xena and not in GDC: {[x for x in xenaSamples if x not in gdcSamples]}")
+        exit(1)
+
+    gdcDataframe.dropna(axis=1, how='all', inplace=True)
+
+
+    gdcColumns = gdcDataframe.columns.tolist()
+    xenaColumns = xenaDataframe.columns.tolist()
+
+    xenaExcludedColumns = [x for x in xenaColumns if not x.endswith((".treatments.diagnoses", ".annotations.diagnoses", ".pathology_details.diagnoses"))]
+    gdcExcludedColumns = [x for x in gdcColumns if not x.endswith((".treatments.diagnoses", ".annotations.diagnoses", ".pathology_details.diagnoses"))]
+
+    if sorted(xenaExcludedColumns) != sorted(gdcExcludedColumns):
+        logger.info("ERROR: Columns retrieved from the GDC do not match those found in Xena matrix.")
+        logger.info(f"Number of columns from the GDC: {len(gdcExcludedColumns)}")
+        logger.info(f"Number of columns in Xena matrix: {len(xenaExcludedColumns)}")
+        logger.info(f"Columns from GDC and not in Xena: {[x for x in gdcExcludedColumns if x not in xenaExcludedColumns]}")
+        logger.info(f"Columns from Xena and not in GDC: {[x for x in xenaExcludedColumns if x not in gdcExcludedColumns]}")
+        exit(1)
+
+    gdcDataframe = gdcDataframe[list(xenaDataframe.columns)]
+
+    gdcDataframe.convert_dtypes().dtypes
+    xenaDataframe.convert_dtypes().dtypes
+
+    gdcDataframe.fillna(pandas.NA, inplace=True)
+    xenaDataframe.fillna(pandas.NA, inplace=True)
+
+    gdcDataframe.sort_values(by=["sample"], inplace=True)
+    xenaDataframe.sort_values(by=["sample"], inplace=True)
+
+    gdcDataframe.reset_index(drop=True, inplace=True)
+    xenaDataframe.reset_index(drop=True, inplace=True)
+
+    result = compare(logger, gdcDataframe, xenaDataframe)
+    if len(result) == 0:
+        logger.info("[{}] test passed for [{}].".format(dataType, projectName))
+        return "PASSED"
+    else:
+        logger.info("[{}] test passed for [{}].".format(dataType, projectName))
+        logger.info("Samples failed: {}".format(result))
+        return "FAILED"
