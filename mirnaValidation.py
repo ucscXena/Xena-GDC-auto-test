@@ -47,7 +47,7 @@ def round_(x, n):
 
     e = floor(log10(abs(x)) - n + 1)  # exponent, 10 ** e
     shifted_dp = x / (10 ** e)  # decimal place shifted n d.p.
-    
+
     return round(shifted_dp) * (10 ** e)  # round and revert
 
 
@@ -81,7 +81,7 @@ def getXenaSamples(xenaFile):  # get all samples from the xena matrix
     return sampleList
 
 
-def getAllSamples(projectName):
+def getAllSamples(projectName, gdcDataType):
     casesEndpt = "https://api.gdc.cancer.gov/cases"
     allSamplesFilter = {
         "op": "and",
@@ -118,7 +118,7 @@ def getAllSamples(projectName):
                 "content": {
                     "field": "files.data_type",
                     "value": [
-                        "miRNA Expression Quantification"
+                        gdcDataType
                     ]
                 }
             },
@@ -155,7 +155,7 @@ def unpeelJson(jsonObj):
     return jsonObj
 
 
-def miRNASamples(projectName, samples):
+def miRNASamples(projectName, samples, gdcDataType):
     mirnaSamplesFilter = {
         "op": "and",
         "content": [
@@ -189,7 +189,7 @@ def miRNASamples(projectName, samples):
                 "content": {
                     "field": "data_type",
                     "value": [
-                        "miRNA Expression Quantification"
+                        gdcDataType
                     ]
                 }
             },
@@ -239,60 +239,71 @@ def xenaDataframe(xenaFile):
         xenaDF[column] = xenaDF[column].apply(round_ForNans)
     return xenaDF
 
-def compare(mirnaSamplesDict, xenaDF):
-    samplesCorrect = 0
-    failed = []
-    sampleNum = 1
+def mirnaDataframe(mirnaSamplesDict, dataType):
+    useColDict = {"mirna": [0, 2],
+                  "mirna_isoform": [1, 3]
+                  }
+    indexColDict = {"mirna": "miRNA_ID",
+                  "mirna_isoform": "isoform_coords"
+                  }
+    useCol = useColDict[dataType]
+    indexCol = indexColDict[dataType]
     mirnaDataTitle = "reads_per_million_miRNA_mapped"
-    total = len(mirnaSamplesDict)
+    mirnaDataframe = pandas.DataFrame()
     for sample in mirnaSamplesDict:
+        sampleDataframe = pandas.DataFrame()
         fileCount = 0
         for fileID in mirnaSamplesDict[sample]:
             fileName = mirnaSamplesDict[sample][fileID]
             sampleFile = "gdcFiles/" + fileID + "/" + fileName
+            tempDF = pandas.read_csv(sampleFile, sep="\t", skiprows=0, usecols=useCol, index_col=indexCol)
+            tempDF["nonNanCount"] = tempDF.apply(
+                lambda x: 1 if (not (pandas.isna(x[mirnaDataTitle]))) else 0, axis=1)
+            tempDF[mirnaDataTitle] = tempDF[mirnaDataTitle].fillna(0)
             if fileCount == 0:
-                sampleDataDF = pandas.read_csv(sampleFile, sep="\t", skiprows=0)
-                sampleDataDF["nonNanCount"] = 0
-                sampleDataDF["nonNanCount"] = sampleDataDF.apply(
-                    lambda x: 1 if (not (pandas.isna(x[mirnaDataTitle]))) else 0, axis=1)
-                sampleDataDF[mirnaDataTitle] = sampleDataDF[mirnaDataTitle].fillna(0)
+                sampleDataframe = tempDF
             else:
-                tempDF = pandas.read_csv(sampleFile, sep="\t", skiprows=0)
-                tempDF["nonNanCount"] = 0
-                tempDF["nonNanCount"] = tempDF.apply(lambda x: 1 if (not (pandas.isna(x[mirnaDataTitle]))) else 0,
-                                                     axis=1)
-                tempDF[mirnaDataTitle] = tempDF[mirnaDataTitle].fillna(0)
-                sampleDataDF["nonNanCount"] += tempDF["nonNanCount"]
-                sampleDataDF[mirnaDataTitle] += tempDF[mirnaDataTitle]
+                sampleDataframe += tempDF
             fileCount += 1
-        sampleDataDF[mirnaDataTitle] = sampleDataDF[mirnaDataTitle].astype(float)
-        sampleDataDF[mirnaDataTitle] = sampleDataDF.apply(lambda x: x[mirnaDataTitle]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
-        sampleDataDF[mirnaDataTitle] = numpy.log2(sampleDataDF[mirnaDataTitle] + 1)
-        sampleDataDF[mirnaDataTitle] = sampleDataDF[mirnaDataTitle].apply(round_ForNans)
-        cellsCorrect = 0
-        for row in range(len(sampleDataDF.index)):
-            xenaDataCell = xenaDF.iloc[row][sample]
-            sampleDataCell = sampleDataDF.iloc[row][mirnaDataTitle]
-            if (xenaDataCell == sampleDataCell) or (pandas.isna(xenaDataCell) and pandas.isna(sampleDataCell)):
-                status = "[{:d}/{:d}] Sample: {}, miRNA_ID: {} - Passed"
-                logger.info(status.format(sampleNum, total, sample, sampleDataDF.iloc[row]['miRNA_ID']))
-                cellsCorrect += 1
-            else:
-                status = "[{:d}/{:d}] Sample: {} - Failed"
-                logger.info(status.format(sampleNum, total, sample))
-                failed.append('{} ({}): Row {}'.format(sample, sampleNum, row))
-        if cellsCorrect == len(sampleDataDF.index):
-            samplesCorrect += 1
+        sampleDataframe[mirnaDataTitle] = sampleDataframe[mirnaDataTitle].astype(float)
+        sampleDataframe[mirnaDataTitle] = sampleDataframe.apply(
+            lambda x: x[mirnaDataTitle] / x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
+        sampleDataframe[mirnaDataTitle] = numpy.log2(sampleDataframe[mirnaDataTitle] + 1)
+        sampleDataframe[mirnaDataTitle] = sampleDataframe[mirnaDataTitle].apply(round_ForNans)
+        sampleDataframe.drop("nonNanCount", inplace=True, axis=1)
+        sampleDataframe.rename(columns={"reads_per_million_miRNA_mapped": sample}, inplace=True)
+        mirnaDataframe = pandas.concat([mirnaDataframe, sampleDataframe], axis=1)
+    return mirnaDataframe
+
+
+def compare(logger, gdcDF, xenaDF):
+    failed = []
+    sampleNum = 1
+    total = len(gdcDF.columns)
+    gdcDF.sort_index(inplace=True)
+    xenaDF.sort_index(inplace=True)
+    for sample in list(gdcDF.columns):
+        xenaColumn = xenaDF[sample]
+        gdcColumn = gdcDF[sample]
+        if not xenaColumn.equals(gdcColumn):
+            status = "[{:d}/{:d}] Sample: {} - Failed"
+            logger.info(status.format(sampleNum, total, sample))
+            failed.append('{} ({})'.format(sample, sampleNum))
+        else:
+            status = "[{:d}/{:d}] Sample: {} - Passed"
+            logger.info(status.format(sampleNum, total, sample))
         sampleNum += 1
-    
     return failed
 
 
 def main(projectName, xenaFilePath, dataType):
+    gdcDataTypeDict = {"mirna": "miRNA Expression Quantification",
+                       "mirna_isoform": "Isoform Expression Quantification"}
+    gdcDataType = gdcDataTypeDict[dataType]
     logger.info("Testing [{}] data for [{}].".format(dataType, projectName))
     xenaSamples = getXenaSamples(xenaFilePath)
-    allSamples = getAllSamples(projectName)
-    mirnaSamplesDict = miRNASamples(projectName, allSamples)
+    allSamples = getAllSamples(projectName, gdcDataType)
+    mirnaSamplesDict = miRNASamples(projectName, allSamples, gdcDataType)
     xenaDF = xenaDataframe(xenaFilePath)
     if sorted(mirnaSamplesDict) != sorted(xenaSamples):
         logger.info("ERROR: Samples retrieved from the GDC do not match those found in Xena matrix.")
@@ -301,9 +312,10 @@ def main(projectName, xenaFilePath, dataType):
         logger.info(f"Samples from GDC and not in Xena: {[x for x in mirnaSamplesDict if x not in xenaSamples]}")
         logger.info(f"Samples from Xena and not in GDC: {[x for x in xenaSamples if x not in mirnaSamplesDict]}")
         exit(1)
+    gdcDF = mirnaDataframe(mirnaSamplesDict, dataType)
     fileIDS = [fileID for sample in mirnaSamplesDict for fileID in mirnaSamplesDict[sample]]
     downloadFiles(fileIDS)
-    result = compare(mirnaSamplesDict, xenaDF)
+    result = compare(logger, gdcDF, xenaDF)
     if len(result) == 0:
         logger.info("[{}] test passed for [{}].".format(dataType, projectName))
         return 'PASSED'
