@@ -34,14 +34,26 @@ def getTimeAndPatientData(project):
     return timeDict
 
 
-def getOS(submitterIDs, survivalData):
+def getOS(submitterIDs, projectName, survivalData):
     casesEndpoint = "https://api.gdc.cancer.gov/cases"
     filter = {
-        "op": "in",
-        "content": {
-            "field": "submitter_id",
-            "value": submitterIDs
-        }
+        "op": "and",
+        "content":[
+            {
+                "op": "in",
+                "content": {
+                    "field": "submitter_id",
+                    "value": submitterIDs
+                }
+            },
+            {
+                "op": "in",
+                "content": {
+                    "field": "project.project_id",
+                    "value": [projectName]
+                }
+            }
+        ]
     }
     params = {
         "filters": filter,
@@ -174,7 +186,7 @@ def compare(logger, gdcDF, xenaDF):
 def main(projectName, xenaFilePath, dataType):
     timeData = getTimeAndPatientData(projectName)
     submitterIDs = [submitterId for submitterId in timeData]
-    survivalData = getOS(submitterIDs, timeData)
+    survivalData = getOS(submitterIDs, projectName, timeData)
     keepSamples = getKeepSamples(projectName)
     survivalData = processSamples(survivalData, keepSamples)
     formattedData = formatData(survivalData)
@@ -199,6 +211,9 @@ def main(projectName, xenaFilePath, dataType):
         exit(1)
 
     logger.info("Testing in progress ...")
+
+    xenaDF = xenaDF.astype({'sample': 'str', "OS.time": "float64", "OS": "int64", "_PATIENT": "str"})
+    gdcDF = gdcDF.astype({'sample': 'str', "OS.time": "float64", "OS": "int64", "_PATIENT": "str"})
 
     result = compare(logger, gdcDF, xenaDF)
     if len(result) == 0:
