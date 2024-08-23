@@ -168,7 +168,7 @@ def main(projectName, xenaFilePath, dataType):
         logger.info(f"Samples from Xena and not in GDC: {[x for x in xenaSamples if x not in proteinSamplesDict]}")
         exit(1)
     fileIDs = [fileID for sample in proteinSamplesDict for fileID in proteinSamplesDict[sample]]
-    # downloadFiles(fileIDs)
+    downloadFiles(fileIDs)
     xenaDF = pandas.read_csv(xenaFilePath, sep="\t", index_col=0)
     gdcDF = proteinDataframe(proteinSamplesDict)
 
