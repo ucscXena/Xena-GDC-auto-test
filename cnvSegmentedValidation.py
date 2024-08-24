@@ -244,22 +244,25 @@ def main(projectName, xenaFilePath, dataType):
         "segment_cnv_ascat-ngs": "AscatNGS",
         "allele_cnv_ascat2": "ASCAT2",
         "allele_cnv_ascat3": "ASCAT3",
+        "segment_cnv_DNAcopy": "DNAcopy"
     }
     gdcDataTypeDict = {
-        "DNAcopy": "Masked Copy Number Segment",
-        "AscatNGS": "Copy Number Segment",
-        "ASCAT2": "Allele-specific Copy Number Segment",
-        "ASCAT3": "Allele-specific Copy Number Segment"
+        "masked_cnv_DNAcopy": "Masked Copy Number Segment",
+        "segment_cnv_ascat-ngs": "Copy Number Segment",
+        "allele_cnv_ascat2": "Allele-specific Copy Number Segment",
+        "allele_cnv_ascat3": "Allele-specific Copy Number Segment",
+        "segment_cnv_DNAcopy": "Copy Number Segment"
     }
     experimentalStrategyDict = {
-        "DNAcopy": "Genotyping Array",
-        "AscatNGS": "WGS",
-        "ASCAT2": "Genotyping Array",
-        "ASCAT3": "Genotyping Array"
+        "masked_cnv_DNAcopy": "Genotyping Array",
+        "segment_cnv_ascat-ngs": "WGS",
+        "allele_cnv_ascat2": "Genotyping Array",
+        "allele_cnv_ascat3": "Genotyping Array",
+        "segment_cnv_DNAcopy": "Genotyping Array"
     }
     workflowType = workflowDict[dataType]
-    gdcDataType = gdcDataTypeDict[workflowType]
-    experimentalStrategy = experimentalStrategyDict[workflowType]
+    gdcDataType = gdcDataTypeDict[dataType]
+    experimentalStrategy = experimentalStrategyDict[dataType]
     xenaSamples = getXenaSamples(xenaFilePath)
     allSamples = getAllSamples(projectName, workflowType, gdcDataType, experimentalStrategy)
     sampleDict, seenSamples = dataTypeSamples(projectName, workflowType, gdcDataType, experimentalStrategy, allSamples)
