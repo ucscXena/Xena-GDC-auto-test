@@ -85,9 +85,9 @@ def run_tests(project, data_type):
     path = '../{}/Xena_Matrices/{}.{}.tsv'.format(project, project, data_type)
     if data_type.startswith('star_'):
         result = ge_test.main(data_type, path, project)
-    elif data_type == 'mirna':
+    elif data_type == 'mirna' or data_type == 'mirna_isoform':
         result = mirna_test.main(project, path, data_type)
-    elif data_type == 'segment_cnv_ascat-ngs' or data_type == 'masked_cnv_DNAcopy' or data_type == "allele_cnv_ascat2" or data_type == "allele_cnv_ascat3":
+    elif data_type == 'segment_cnv_ascat-ngs' or data_type == 'masked_cnv_DNAcopy' or data_type == "allele_cnv_ascat2" or data_type == "allele_cnv_ascat3" or data_type == "segment_cnv_DNAcopy":
         result = seg_cnv_test.main(project, path, data_type)
     elif data_type == 'gene-level_ascat-ngs' or data_type == 'gene-level_ascat2' or data_type == 'gene-level_ascat3' or data_type == 'gene-level_absolute':
         result = gl_cnv_test.main(project, path, data_type)
@@ -125,7 +125,7 @@ def main():
                 exit(1)
     for project in projects:
         if data_types is None:
-            data_types = os.listdir('../{}/Raw_Data/'.format(project))
+            data_types = [file for file in os.listdir('../{}/Raw_Data/'.format(project)) if not file.startswith('.')]
         for data_type in data_types:
             if data_type == 'STAR':
                 for star_dtype in ['star_counts', 'star_tpm', 'star_fpkm', 'star_fpkm-uq']:
