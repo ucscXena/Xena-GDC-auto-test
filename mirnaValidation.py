@@ -312,9 +312,9 @@ def main(projectName, xenaFilePath, dataType):
         logger.info(f"Samples from GDC and not in Xena: {[x for x in mirnaSamplesDict if x not in xenaSamples]}")
         logger.info(f"Samples from Xena and not in GDC: {[x for x in xenaSamples if x not in mirnaSamplesDict]}")
         exit(1)
-    gdcDF = mirnaDataframe(mirnaSamplesDict, dataType)
     fileIDS = [fileID for sample in mirnaSamplesDict for fileID in mirnaSamplesDict[sample]]
     downloadFiles(fileIDS)
+    gdcDF = mirnaDataframe(mirnaSamplesDict, dataType)
     result = compare(logger, gdcDF, xenaDF)
     if len(result) == 0:
         logger.info("[{}] test passed for [{}].".format(dataType, projectName))
