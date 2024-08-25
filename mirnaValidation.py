@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 def round_ForNans(x):
     if( pandas.notna(x) ):
-        return numpy.format_float_scientific(x, precision=10)
+        return numpy.format_float_scientific(x, precision=8)
     else:
         return numpy.nan
 
