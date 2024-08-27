@@ -27,14 +27,16 @@ def getTimeAndPatientData(project):
     responseJson = response.json()
     timeData = responseJson["results"][0]["donors"]
     timeDict = {}
+    censoredDict = {}
     for entry in timeData:
         patient = entry["submitter_id"]
         osTime = entry["time"]
         timeDict[patient] = {"OS.time": osTime}
-    return timeDict
+        censoredDict[patient] = entry["censored"]
+    return timeDict, censoredDict
 
 
-def getOS(submitterIDs, projectName, survivalData):
+def getOSAndFilterSamples(submitterIDs, projectName, survivalData, keepSamples):
     casesEndpoint = "https://api.gdc.cancer.gov/cases"
     filter = {
         "op": "and",
@@ -65,13 +67,23 @@ def getOS(submitterIDs, projectName, survivalData):
     response = requests.post(casesEndpoint, headers={"Content-Type": "application/json"}, json=params)
     responseJson = response.json()
     statusData = responseJson["data"]["hits"]
+    unknownStatusCases = []
     for entry in statusData:
         submitterID = entry["submitter_id"]
-        status = 1 if entry["demographic"]["vital_status"] == "Dead" else 0
-        samples = entry["submitter_sample_ids"]
+        casesStatus = entry["demographic"]["vital_status"]
+        samples = [sample for sample in entry["submitter_sample_ids"] if sample in keepSamples]
+
+        if casesStatus == "Dead":
+            status = 1
+        elif casesStatus == "Alive":
+            status = 0
+        else:
+            status = None
+            unknownStatusCases.append(submitterID)
+
         survivalData[submitterID]["OS"] = status
         survivalData[submitterID]["samples"] = samples
-    return survivalData
+    return survivalData, unknownStatusCases
 
 
 def getKeepSamples(project):
@@ -172,23 +184,21 @@ def compare(logger, gdcDF, xenaDF):
             status = "[{:d}/{:d}] Sample: {} - Passed"
             logger.info(status.format(sampleNum, total, sample))
         sampleNum += 1
-
-            # print("--------------")
-            # print("Error: Xena Row and GDC Row are not equal\n")
-            # print("Xena Row")
-            # print(xenaRow, end="\n\n")
-            # print("GDC Row")
-            # print(gdcRow)
-            # print("--------------\n\n")
     return failed
 
+def fixUnknownStatuses(unknownStatusCases, survivalData, censoredData):
+    for unknownStatusCase in unknownStatusCases:
+        survivalData[unknownStatusCase]["OS"] = 0 if censoredData[unknownStatusCase] == "True" else 1
+    return survivalData
 
 def main(projectName, xenaFilePath, dataType):
-    timeData = getTimeAndPatientData(projectName)
+    timeData, censoredData = getTimeAndPatientData(projectName)
     submitterIDs = [submitterId for submitterId in timeData]
-    survivalData = getOS(submitterIDs, projectName, timeData)
     keepSamples = getKeepSamples(projectName)
-    survivalData = processSamples(survivalData, keepSamples)
+    survivalData, unknownStatusCases = getOSAndFilterSamples(submitterIDs, projectName, timeData, keepSamples)
+    if len(unknownStatusCases) != 0:
+        survivalData = fixUnknownStatuses(unknownStatusCases, survivalData, censoredData)
+
     formattedData = formatData(survivalData)
     gdcDF = pandas.DataFrame(formattedData)
     xenaDF = pandas.read_csv(xenaFilePath, sep="\t")
