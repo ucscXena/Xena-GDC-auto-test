@@ -41,6 +41,7 @@ valid_dtype = [
     'protein',
     'clinical',
     'survival',
+    'STAR'
 ]
 
 
