@@ -8,9 +8,34 @@ import json
 import subprocess
 import pandas
 import numpy
+import hashlib
 
 
 logger = logging.getLogger(__name__)
+
+
+def md5sum(filePath):
+    md5_hash = hashlib.md5()
+
+    with open(filePath, "rb") as file:
+        for chunk in iter(lambda: file.read(4096), b""):
+            md5_hash.update(chunk)
+
+    return md5_hash.hexdigest()
+
+
+def existing_md5sums(logger, projectName, dataType, sampleDict):
+    existingFiles = [file for file in os.listdir(f"gdcFiles/{projectName}/{dataType}") if not file.startswith(".")]
+    existingMd5sumFileDict = {md5sum(f"gdcFiles/{projectName}/{dataType}/{file}"): file for file in existingFiles}
+    gdcMd5sumFileDict = {sampleDict[sample][fileID]["md5sum"]: fileID for sample in sampleDict for fileID in sampleDict[sample]}
+    logger.info(f"{len(gdcMd5sumFileDict)} files found from the GDC for {dataType} data for {projectName}")
+    logger.info(f"{len(existingMd5sumFileDict)} files found at gdcFiles/{projectName}/{dataType}")
+    fileIdDict = {innerKey: value
+                  for outerDict in sampleDict.values()
+                  for innerKey, value in outerDict.items()}
+    filesNeededToUpdate = {gdcMd5sumFileDict[md5sum]: fileIdDict[gdcMd5sumFileDict[md5sum]]["file_name"] for md5sum in gdcMd5sumFileDict if md5sum not in existingMd5sumFileDict}
+    logger.info(f"{len(filesNeededToUpdate)} files needed to update")
+    return filesNeededToUpdate
 
 
 def round_ForNans(x):
@@ -20,19 +45,36 @@ def round_ForNans(x):
         return numpy.nan
 
 
-def downloadFiles(fileList):
+def downloadFiles(fileList, projectName, dataType):
+    if isinstance(fileList, list):
+        ids = fileList
+    elif isinstance(fileList, dict):
+        ids = list(fileList.keys())
     jsonPayload = {
-        "ids": fileList
+        "ids": ids
     }
     with open("payload.txt", "w") as payloadFile:
         payloadFile.write(str(jsonPayload).replace("\'", "\""))
 
     logger.info("Downloading from GDC: ")
-    subprocess.run(["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
-         "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
 
-    os.system("mkdir -p gdcFiles")
-    os.system("tar -xzf gdcFiles.tar.gz -C gdcFiles")
+    outputDir = f"gdcFiles/{projectName}/{dataType}"
+    os.makedirs(outputDir, exist_ok=True)
+
+    curlCommand = [
+        "curl", "--request", "POST", "--header", "Content-Type: application/json",
+        "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"
+    ]
+
+    if len(fileList) != 1:
+        outputFile = "gdcFiles.tar.gz"
+        curlCommand.extend(["-o", outputFile])
+        subprocess.run(curlCommand)
+        os.system(f"tar --strip-components=1 -xzf  gdcFiles.tar.gz -C {outputDir}")
+    else:
+        outputFile = f"{outputDir}/{list(fileList.values())[0]}"
+        curlCommand.extend(["-o", outputFile])
+        subprocess.run(curlCommand)
 
 
 def getXenaSamples(xenaFile):  # get all samples from the xena matrix
@@ -184,7 +226,7 @@ def dataTypeSamples(projectName, workflowType, gdcDataType, experimentalStrategy
     }
     params = {
         "filters": json.dumps(dataTypeFilter),
-        "fields": "cases.samples.submitter_id,cases.samples.tissue_type,file_id,file_name",
+        "fields": "cases.samples.submitter_id,cases.samples.tissue_type,file_id,file_name,md5sum",
         "format": "json",
         "size": 20000
     }
@@ -200,8 +242,8 @@ def dataTypeSamples(projectName, workflowType, gdcDataType, experimentalStrategy
             if sample["tissue_type"] == "Tumor":
                 seenDict[sampleName] = seenDict.get(sampleName, 0) + 1
                 seenSamples.append(sampleName)
-                dataTypeDict[sampleName + "." + str(seenDict[sampleName])] = dict(file_id=caseDict["file_id"],
-                                                            file_name=caseDict["file_name"])
+                dataTypeDict[sampleName + "." + str(seenDict[sampleName])] = {caseDict["file_id"] : {"file_name": caseDict["file_name"],
+                                                                                                                "md5sum": caseDict["md5sum"]}}
 
     return dataTypeDict, list(set(seenSamples))
 
@@ -213,25 +255,25 @@ def xenaDataframe(xenaFile):
     return xenaDF
 
 
-def sampleDataframe(workflowType, sampleDict):
+def sampleDataframe(workflowType, sampleDict, projectName, dataType):
     dataFrame = pandas.DataFrame()
     # Create a dataframe for all the samples retrieved
     for sample in sampleDict:
-        fileId = sampleDict[sample]["file_id"]
-        fileName = sampleDict[sample]["file_name"]
-        sampleFile = "gdcFiles/" + fileId + "/" + fileName
-        normalSampleName = sample[:sample.index(".")]
-        # Create data frame for sample data
-        sampleDataDF = pandas.read_csv(sampleFile, sep="\t")
-        sampleDataDF.rename(columns={'Chromosome': 'Chrom'}, inplace=True)
-        sampleDataDF.rename(columns={'GDC_Aliquot': 'sample'}, inplace=True)
-        if( workflowType == "DNAcopy" ):
-            sampleDataDF.rename(columns={'Segment_Mean': 'value'}, inplace=True)
-        elif( workflowType == "AscatNGS" or workflowType == "ASCAT2" or workflowType == "ASCAT3"):
-            sampleDataDF.rename(columns={'Copy_Number': 'value'}, inplace=True)
-        sampleDataDF.drop(columns=['Major_Copy_Number', 'Minor_Copy_Number', 'Num_Probes'], inplace=True, errors="ignore")
-        sampleDataDF.replace(sampleDataDF.iloc[0].iat[0], normalSampleName, inplace=True)
-        dataFrame = pandas.concat([dataFrame, sampleDataDF])
+        for fileID in sampleDict[sample]:
+            fileName = sampleDict[sample][fileID]["file_name"]
+            sampleFile = "gdcFiles/{}/{}/{}".format(projectName, dataType, fileName)
+            normalSampleName = sample[:sample.index(".")]
+            # Create data frame for sample data
+            sampleDataDF = pandas.read_csv(sampleFile, sep="\t")
+            sampleDataDF.rename(columns={'Chromosome': 'Chrom'}, inplace=True)
+            sampleDataDF.rename(columns={'GDC_Aliquot': 'sample'}, inplace=True)
+            if( workflowType == "DNAcopy" ):
+                sampleDataDF.rename(columns={'Segment_Mean': 'value'}, inplace=True)
+            elif( workflowType == "AscatNGS" or workflowType == "ASCAT2" or workflowType == "ASCAT3"):
+                sampleDataDF.rename(columns={'Copy_Number': 'value'}, inplace=True)
+            sampleDataDF.drop(columns=['Major_Copy_Number', 'Minor_Copy_Number', 'Num_Probes'], inplace=True, errors="ignore")
+            sampleDataDF.replace(sampleDataDF.iloc[0].iat[0], normalSampleName, inplace=True)
+            dataFrame = pandas.concat([dataFrame, sampleDataDF])
     dataFrame["value"] = dataFrame["value"].apply(round_ForNans)
     
     return dataFrame
@@ -274,12 +316,19 @@ def main(projectName, xenaFilePath, dataType):
         logger.info(f"Samples from GDC and not in Xena: {[x for x in seenSamples if x not in xenaSamples]}")
         logger.info(f"Samples from Xena and not in GDC: {[x for x in xenaSamples if x not in seenSamples]}")
         exit(1)
-    fileIDS = [sampleDict[x]["file_id"] for x in sampleDict]
-    downloadFiles(fileIDS)
+    if os.path.isdir(f"gdcFiles/{projectName}/{dataType}"):
+        fileIDs = existing_md5sums(logger, projectName, dataType, sampleDict)
+    else:
+        fileIDs = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
+        logger.info(f"{len(fileIDs)} files found from the GDC for {dataType} data for {projectName}")
+        logger.info(f"0 files found at gdcFiles/{projectName}/{dataType}")
+        logger.info(f"{len(fileIDs)} files needed to download")
+    if len(fileIDs) != 0:
+        downloadFiles(fileIDs, projectName, dataType)
     # sort data frame
     xenaDF.sort_values(by=sorted(xenaDF), inplace=True)
     # create dataframe for samples
-    sampleDf = sampleDataframe(workflowType, sampleDict)
+    sampleDf = sampleDataframe(workflowType, sampleDict, projectName, dataType)
     # sort sample dataframe as well
     sampleDf.sort_values(by=sorted(sampleDf), inplace=True)
     # then reset index ordering for each one

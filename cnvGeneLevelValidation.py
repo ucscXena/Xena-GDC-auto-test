@@ -1,37 +1,52 @@
 import os
 import logging
-import sys
 import requests
 import json
 import subprocess
-import tarfile
 import pandas
 import numpy
-from math import log10, floor
-
+import hashlib
 
 logger = logging.getLogger(__name__)
 
 
 def round_ForNans(x):
-    if( pandas.notna(x) ):
+    if (pandas.notna(x)):
         return numpy.format_float_scientific(x, precision=8)
     else:
         return numpy.nan
 
-# From https://github.com/corriander/python-sigfig/blob/dev/sigfig/sigfig.py
 
-def downloadFiles(fileList):
+def downloadFiles(fileList, projectName, dataType):
+    if isinstance(fileList, list):
+        ids = fileList
+    elif isinstance(fileList, dict):
+        ids = list(fileList.keys())
     jsonPayload = {
-        "ids": fileList
+        "ids": ids
     }
     with open("payload.txt", "w") as payloadFile:
         payloadFile.write(str(jsonPayload).replace("\'", "\""))
+
     logger.info("Downloading from GDC: ")
-    subprocess.run(["curl", "-o", "gdcFiles.tar.gz", "--remote-name", "--remote-header-name", "--request", "POST", "--header",
-                     "Content-Type: application/json", "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"])
-    os.system("mkdir -p gdcFiles")
-    os.system("tar -xzf gdcFiles.tar.gz -C gdcFiles")
+
+    outputDir = f"gdcFiles/{projectName}/{dataType}"
+    os.makedirs(outputDir, exist_ok=True)
+
+    curlCommand = [
+        "curl", "--request", "POST", "--header", "Content-Type: application/json",
+        "--data", "@payload.txt", "https://api.gdc.cancer.gov/data"
+    ]
+
+    if len(fileList) != 1:
+        outputFile = "gdcFiles.tar.gz"
+        curlCommand.extend(["-o", outputFile])
+        subprocess.run(curlCommand)
+        os.system(f"tar --strip-components=1 -xzf  gdcFiles.tar.gz -C {outputDir}")
+    else:
+        outputFile = f"{outputDir}/{list(fileList.values())[0]}"
+        curlCommand.extend(["-o", outputFile])
+        subprocess.run(curlCommand)
 
 
 def getXenaSamples(xenaFile):  # get all samples from the xena matrix
@@ -108,13 +123,13 @@ def getAllSamples(projectName, workflowType, experimentalStrategy):
     for caseDict in responseJson:
         for sample in caseDict["submitter_sample_ids"]:
             allSamples.append(sample)
-    
+
     return allSamples
 
 
 def unpeelJson(jsonObj):
     jsonObj = jsonObj.get("data").get("hits")
-    
+
     return jsonObj
 
 
@@ -186,7 +201,7 @@ def dataTypeSamples(projectName, samples, workflowType, experimentalStrategy):
     }
     params = {
         "filters": json.dumps(dataTypeFilter),
-        "fields": "cases.samples.submitter_id,cases.samples.tissue_type,file_id,file_name",
+        "fields": "cases.samples.submitter_id,cases.samples.tissue_type,file_id,file_name,md5sum",
         "format": "json",
         "size": 20000
     }
@@ -198,11 +213,15 @@ def dataTypeSamples(projectName, samples, workflowType, experimentalStrategy):
             sampleName = sample["submitter_id"]
             if sample["tissue_type"] == "Tumor":
                 if sampleName in dataTypeDict:
-                    dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
+                    dataTypeDict[sampleName][caseDict["file_id"]] = {"fileName": caseDict["file_name"],
+                                                                     "md5sum": caseDict["md5sum"]
+                                                                     }
                 else:
                     dataTypeDict[sampleName] = {}
-                    dataTypeDict[sampleName][caseDict["file_id"]] = caseDict["file_name"]
-    
+                    dataTypeDict[sampleName][caseDict["file_id"]] = {"fileName": caseDict["file_name"],
+                                                                     "md5sum": caseDict["md5sum"]
+                                                                     }
+
     return dataTypeDict
 
 
@@ -211,11 +230,38 @@ def xenaDataframe(xenaFile):
     for column in xenaDF:
         if pandas.api.types.is_numeric_dtype(xenaDF[column]):
             xenaDF[column] = xenaDF[column].apply(round_ForNans)
-    
+
     return xenaDF
 
 
-def compare(logger, sampleDict, xenaDF):
+def md5sum(filePath):
+    md5_hash = hashlib.md5()
+
+    with open(filePath, "rb") as file:
+        for chunk in iter(lambda: file.read(4096), b""):
+            md5_hash.update(chunk)
+
+    return md5_hash.hexdigest()
+
+
+def existing_md5sums(logger, projectName, dataType, sampleDict):
+    existingFiles = [file for file in os.listdir(f"gdcFiles/{projectName}/{dataType}") if not file.startswith(".")]
+    existingMd5sumFileDict = {md5sum(f"gdcFiles/{projectName}/{dataType}/{file}"): file for file in existingFiles}
+    gdcMd5sumFileDict = {sampleDict[sample][fileID]["md5sum"]: fileID for sample in sampleDict for fileID in
+                         sampleDict[sample]}
+    logger.info(f"{len(gdcMd5sumFileDict)} files found from the GDC for {dataType} data for {projectName}")
+    logger.info(f"{len(existingMd5sumFileDict)} files found at gdcFiles/{projectName}/{dataType}")
+    fileIdDict = {innerKey: value
+                  for outerDict in sampleDict.values()
+                  for innerKey, value in outerDict.items()}
+    filesNeededToUpdate = {gdcMd5sumFileDict[md5sum]: fileIdDict[gdcMd5sumFileDict[md5sum]]["fileName"] for md5sum in
+                           gdcMd5sumFileDict if md5sum not in existingMd5sumFileDict}
+    logger.info(f"{len(filesNeededToUpdate)} files needed to update")
+    return filesNeededToUpdate
+    x = 5
+
+
+def compare(logger, sampleDict, xenaDF, projectName, dataType):
     samplesCorrect = 0
     failed = []
     sampleNum = 1
@@ -223,23 +269,26 @@ def compare(logger, sampleDict, xenaDF):
     for sample in sampleDict:
         fileCount = 0
         for fileID in sampleDict[sample]:
-            fileName = sampleDict[sample][fileID]
-            sampleFile = "gdcFiles/" + fileID + "/" + fileName
+            fileName = sampleDict[sample][fileID]["fileName"]
+            sampleFile = "gdcFiles/{}/{}/{}".format(projectName, dataType, fileName)
             if fileCount == 0:
                 sampleDataDF = pandas.read_csv(sampleFile, sep="\t")
                 sampleDataDF["nonNanCount"] = 0
-                sampleDataDF["nonNanCount"] = sampleDataDF.apply(lambda x: 1 if (not(pandas.isna(x["copy_number"]))) else 0, axis=1)
+                sampleDataDF["nonNanCount"] = sampleDataDF.apply(
+                    lambda x: 1 if (not (pandas.isna(x["copy_number"]))) else 0, axis=1)
                 sampleDataDF["copy_number"] = sampleDataDF["copy_number"].fillna(0)
             else:
                 tempDF = pandas.read_csv(sampleFile, sep="\t")
                 tempDF["nonNanCount"] = 0
-                tempDF["nonNanCount"] = tempDF.apply(lambda x: 1 if (not(pandas.isna(x["copy_number"]))) else 0, axis=1)
+                tempDF["nonNanCount"] = tempDF.apply(lambda x: 1 if (not (pandas.isna(x["copy_number"]))) else 0,
+                                                     axis=1)
                 tempDF["copy_number"] = tempDF["copy_number"].fillna(0)
                 sampleDataDF["nonNanCount"] += tempDF["nonNanCount"]
                 sampleDataDF["copy_number"] += tempDF["copy_number"]
             fileCount += 1
         cellsCorrect = 0
-        sampleDataDF["copy_number"] = sampleDataDF.apply(lambda x: x["copy_number"]/x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
+        sampleDataDF["copy_number"] = sampleDataDF.apply(
+            lambda x: x["copy_number"] / x["nonNanCount"] if x["nonNanCount"] != 0 else numpy.nan, axis=1)
         sampleDataDF["copy_number"] = sampleDataDF["copy_number"].apply(round_ForNans)
         xenaColumn = xenaDF[sample]
         sampleColumn = sampleDataDF["copy_number"]
@@ -254,7 +303,7 @@ def compare(logger, sampleDict, xenaDF):
             logger.info(status.format(sampleNum, total, sample))
             failed.append('{} ({})'.format(sample, sampleNum))
         sampleNum += 1
-    
+
     return failed
 
 
@@ -264,8 +313,8 @@ def main(projectName, xenaFilePath, dataType):
         "gene-level_absolute": "ABSOLUTE LiftOver",
         "gene-level_ascat2": "ASCAT2",
         "gene-level_ascat3": "ASCAT3",
-        "gene-level_ascat-ngs": "AscatNGS"    
-    } 
+        "gene-level_ascat-ngs": "AscatNGS"
+    }
     experimentalStrategyDict = {
         "ABSOLUTE LiftOver": "Genotyping Array",
         "ASCAT2": "Genotyping Array",
@@ -285,9 +334,16 @@ def main(projectName, xenaFilePath, dataType):
         logger.info(f"Samples from GDC and not in Xena: {[x for x in sampleDict if x not in xenaSamples]}")
         logger.info(f"Samples from Xena and not in GDC: {[x for x in xenaSamples if x not in sampleDict]}")
         exit(1)
-    fileIDS = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
-    downloadFiles(fileIDS)
-    result = compare(logger, sampleDict, xenaDF)
+    if os.path.isdir(f"gdcFiles/{projectName}/{dataType}"):
+        fileIDs = existing_md5sums(logger, projectName, dataType, sampleDict)
+    else:
+        fileIDs = [fileID for sample in sampleDict for fileID in sampleDict[sample]]
+        logger.info(f"{len(fileIDs)} files found from the GDC for {dataType} data for {projectName}")
+        logger.info(f"0 files found at gdcFiles/{projectName}/{dataType}")
+        logger.info(f"{len(fileIDs)} files needed to download")
+    if len(fileIDs) != 0:
+        downloadFiles(fileIDs, projectName, dataType)
+    result = compare(logger, sampleDict, xenaDF, projectName, dataType)
     if len(result) == 0:
         logger.info("[{}] test passed for [{}].".format(dataType, projectName))
         return 'PASSED'
